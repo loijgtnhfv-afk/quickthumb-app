@@ -10,16 +10,22 @@ import wawoff from 'wawoff2';
 // ---- Font loading (cached) --------------------------------------------------
 
 type Fonts = {
-  sansBlack: ArrayBuffer;
-  sansBold: ArrayBuffer;
-  serifBold: ArrayBuffer;
+  sansBlack: Buffer;
+  sansBold: Buffer;
+  serifBold: Buffer;
 };
 
 let cachedFonts: Fonts | null = null;
 let fontsLoadingPromise: Promise<Fonts> | null = null;
 
-function uint8ToArrayBuffer(u8: Uint8Array): ArrayBuffer {
-  return u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength) as ArrayBuffer;
+// wawoff2 is Emscripten WASM. Its decompress() returns a Uint8Array backed by
+// the WASM heap. Doing several decompresses (or any operation that triggers
+// WASM memory growth) DETACHES previously returned ArrayBuffers. So we must
+// (1) run decompresses sequentially, and (2) copy each result into fresh
+// Node Buffer memory immediately, BEFORE the next decompress.
+async function decompressToBuffer(woff2: Buffer): Promise<Buffer> {
+  const ttf = (await wawoff.decompress(woff2)) as Uint8Array;
+  return Buffer.from(ttf); // Buffer.from(Uint8Array) copies
 }
 
 async function loadFonts(): Promise<Fonts> {
@@ -48,17 +54,12 @@ async function loadFonts(): Promise<Fonts> {
     ]);
 
     // Satori cannot read WOFF2 (Brotli-compressed). Decompress to TTF first.
-    const [sansBlackTtf, sansBoldTtf, serifBoldTtf] = (await Promise.all([
-      wawoff.decompress(sansBlackWoff2),
-      wawoff.decompress(sansBoldWoff2),
-      wawoff.decompress(serifBoldWoff2),
-    ])) as Uint8Array[];
+    // Sequential + immediate copy to avoid WASM heap-growth detaching buffers.
+    const sansBlack = await decompressToBuffer(sansBlackWoff2);
+    const sansBold = await decompressToBuffer(sansBoldWoff2);
+    const serifBold = await decompressToBuffer(serifBoldWoff2);
 
-    cachedFonts = {
-      sansBlack: uint8ToArrayBuffer(sansBlackTtf),
-      sansBold: uint8ToArrayBuffer(sansBoldTtf),
-      serifBold: uint8ToArrayBuffer(serifBoldTtf),
-    };
+    cachedFonts = { sansBlack, sansBold, serifBold };
     return cachedFonts;
   })();
   return fontsLoadingPromise;
