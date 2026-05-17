@@ -4,6 +4,8 @@ import sharp from 'sharp';
 import fs from 'fs';
 import path from 'path';
 import React from 'react';
+// @ts-expect-error - wawoff2 has no type definitions
+import wawoff from 'wawoff2';
 
 // ---- Font loading (cached) --------------------------------------------------
 
@@ -14,34 +16,52 @@ type Fonts = {
 };
 
 let cachedFonts: Fonts | null = null;
+let fontsLoadingPromise: Promise<Fonts> | null = null;
 
-function bufferToArrayBuffer(buf: Buffer): ArrayBuffer {
-  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+function uint8ToArrayBuffer(u8: Uint8Array): ArrayBuffer {
+  return u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength) as ArrayBuffer;
 }
 
-function loadFonts(): Fonts {
+async function loadFonts(): Promise<Fonts> {
   if (cachedFonts) return cachedFonts;
+  if (fontsLoadingPromise) return fontsLoadingPromise;
 
-  const root = process.cwd();
-  const sansBlackPath = path.join(
-    root,
-    'node_modules/@fontsource/noto-sans-jp/files/noto-sans-jp-japanese-900-normal.woff2'
-  );
-  const sansBoldPath = path.join(
-    root,
-    'node_modules/@fontsource/noto-sans-jp/files/noto-sans-jp-japanese-700-normal.woff2'
-  );
-  const serifBoldPath = path.join(
-    root,
-    'node_modules/@fontsource/noto-serif-jp/files/noto-serif-jp-japanese-700-normal.woff2'
-  );
+  fontsLoadingPromise = (async () => {
+    const root = process.cwd();
+    const sansBlackPath = path.join(
+      root,
+      'node_modules/@fontsource/noto-sans-jp/files/noto-sans-jp-japanese-900-normal.woff2'
+    );
+    const sansBoldPath = path.join(
+      root,
+      'node_modules/@fontsource/noto-sans-jp/files/noto-sans-jp-japanese-700-normal.woff2'
+    );
+    const serifBoldPath = path.join(
+      root,
+      'node_modules/@fontsource/noto-serif-jp/files/noto-serif-jp-japanese-700-normal.woff2'
+    );
 
-  cachedFonts = {
-    sansBlack: bufferToArrayBuffer(fs.readFileSync(sansBlackPath)),
-    sansBold: bufferToArrayBuffer(fs.readFileSync(sansBoldPath)),
-    serifBold: bufferToArrayBuffer(fs.readFileSync(serifBoldPath)),
-  };
-  return cachedFonts;
+    const [sansBlackWoff2, sansBoldWoff2, serifBoldWoff2] = await Promise.all([
+      fs.promises.readFile(sansBlackPath),
+      fs.promises.readFile(sansBoldPath),
+      fs.promises.readFile(serifBoldPath),
+    ]);
+
+    // Satori cannot read WOFF2 (Brotli-compressed). Decompress to TTF first.
+    const [sansBlackTtf, sansBoldTtf, serifBoldTtf] = (await Promise.all([
+      wawoff.decompress(sansBlackWoff2),
+      wawoff.decompress(sansBoldWoff2),
+      wawoff.decompress(serifBoldWoff2),
+    ])) as Uint8Array[];
+
+    cachedFonts = {
+      sansBlack: uint8ToArrayBuffer(sansBlackTtf),
+      sansBold: uint8ToArrayBuffer(sansBoldTtf),
+      serifBold: uint8ToArrayBuffer(serifBoldTtf),
+    };
+    return cachedFonts;
+  })();
+  return fontsLoadingPromise;
 }
 
 // ---- Title wrapping ---------------------------------------------------------
@@ -104,7 +124,6 @@ function buildVlogElement(title: string, bgDataUrl: string): React.ReactElement 
         objectFit: 'cover',
       },
     }),
-    // Dark vignette overlay
     h('div', {
       style: {
         position: 'absolute',
@@ -116,7 +135,6 @@ function buildVlogElement(title: string, bgDataUrl: string): React.ReactElement 
           'linear-gradient(to bottom, rgba(0,0,0,0.45), rgba(0,0,0,0.10) 50%, rgba(0,0,0,0.55))',
       },
     }),
-    // Top thin line
     h('div', {
       style: {
         position: 'absolute',
@@ -127,7 +145,6 @@ function buildVlogElement(title: string, bgDataUrl: string): React.ReactElement 
         background: 'rgba(255,255,255,0.9)',
       },
     }),
-    // Bottom thin line
     h('div', {
       style: {
         position: 'absolute',
@@ -138,7 +155,6 @@ function buildVlogElement(title: string, bgDataUrl: string): React.ReactElement 
         background: 'rgba(255,255,255,0.9)',
       },
     }),
-    // Centered serif title
     h(
       'div',
       {
@@ -195,7 +211,6 @@ function buildTechElement(title: string, bgDataUrl: string): React.ReactElement 
         objectFit: 'cover',
       },
     }),
-    // Left gradient panel
     h('div', {
       style: {
         position: 'absolute',
@@ -207,7 +222,6 @@ function buildTechElement(title: string, bgDataUrl: string): React.ReactElement 
           'linear-gradient(to right, rgba(0,0,0,0.85), rgba(0,0,0,0.5) 60%, rgba(0,0,0,0))',
       },
     }),
-    // Left-aligned heavy title
     h(
       'div',
       {
@@ -263,7 +277,6 @@ function buildGamingElement(title: string, bgDataUrl: string): React.ReactElemen
         objectFit: 'cover',
       },
     }),
-    // Bottom dark gradient
     h('div', {
       style: {
         position: 'absolute',
@@ -275,7 +288,6 @@ function buildGamingElement(title: string, bgDataUrl: string): React.ReactElemen
           'linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,0) 50%, rgba(0,0,0,0.9))',
       },
     }),
-    // Big bottom impact title with red shadow
     h(
       'div',
       {
@@ -333,7 +345,6 @@ function buildEditorialElement(title: string, bgDataUrl: string): React.ReactEle
         objectFit: 'cover',
       },
     }),
-    // Bottom translucent bar
     h('div', {
       style: {
         position: 'absolute',
@@ -344,7 +355,6 @@ function buildEditorialElement(title: string, bgDataUrl: string): React.ReactEle
         background: 'rgba(15,12,41,0.78)',
       },
     }),
-    // Title on the bar
     h(
       'div',
       {
@@ -398,19 +408,16 @@ export async function composeThumbnail(
   title: string,
   style: ThumbnailStyle
 ): Promise<Buffer> {
-  const fonts = loadFonts();
+  const fonts = await loadFonts();
 
-  // 1) Resize background to 1280x720 and encode as data URL
   const bgPng = await sharp(backgroundImageBuffer)
     .resize(1280, 720, { fit: 'cover', position: 'center' })
     .png()
     .toBuffer();
   const bgDataUrl = `data:image/png;base64,${bgPng.toString('base64')}`;
 
-  // 2) Build JSX-like element
   const element = buildElement(style, title, bgDataUrl);
 
-  // 3) Render to SVG with Satori (handles Japanese fonts as glyph paths)
   const svg = await satori(element, {
     width: 1280,
     height: 720,
@@ -421,7 +428,6 @@ export async function composeThumbnail(
     ],
   });
 
-  // 4) Rasterize SVG to PNG with Resvg
   const resvg = new Resvg(svg, {
     fitTo: { mode: 'width', value: 1280 },
   });
