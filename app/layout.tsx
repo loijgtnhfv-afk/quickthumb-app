@@ -6,6 +6,12 @@ export const metadata: Metadata = {
   title: "Quickthumb — AI thumbnails from a YouTube URL",
   description: "Paste a YouTube URL. Our AI watches your video, finds the click-worthy moment, and generates thumbnails proven to boost views.",
   metadataBase: new URL("https://quickthumb.app"),
+  icons: {
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+    ],
+    apple: "/favicon.svg",
+  },
   openGraph: {
     title: "Quickthumb — Paste a URL. Win the click.",
     description: "AI watches your YouTube video and generates 4 click-tested thumbnails in 60 seconds.",
