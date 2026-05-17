@@ -17,6 +17,8 @@
     "@supabase/supabase-js": "^2.45.4",
     "replicate": "^1.0.1",
     "sharp": "^0.33.5",
+    "satori": "^0.10.13",
+    "@resvg/resvg-js": "^2.6.2",
     "@fontsource/noto-sans-jp": "^5.1.0",
     "@fontsource/noto-serif-jp": "^5.1.0"
   },
