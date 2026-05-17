@@ -26,7 +26,7 @@ async function fetchVideoMetadata(videoId: string) {
   const res = await fetch(url, { cache: 'no-store' });
   if (!res.ok) {
     const body = await res.text();
-    console.error('YouTube API error', { status: res.status, body, keyLen: apiKey.length, keyHead: apiKey.slice(0, 6) });
+    console.error('YouTube API error', { status: res.status, body, keyLen: apiKey.length });
     throw new Error(`YouTube API ${res.status}: ${body.slice(0, 300)}`);
   }
   const data = await res.json();
@@ -154,12 +154,17 @@ export async function POST(request: NextRequest) {
     }
     const generationId = insertRow.id as string;
 
+    // Sequential generation: 1 request at a time so Replicate's burst-1 rate limit (active when balance < $5) is respected.
     let urls: string[];
     try {
-      const replicateUrls = await Promise.all(prompts.map((p) => generateThumbnail(p)));
-      urls = await Promise.all(
-        replicateUrls.map((u, i) => downloadAndStore(u, user.id, generationId, i + 1))
-      );
+      const replicateUrls: string[] = [];
+      for (const p of prompts) {
+        replicateUrls.push(await generateThumbnail(p));
+      }
+      urls = [];
+      for (let i = 0; i < replicateUrls.length; i++) {
+        urls.push(await downloadAndStore(replicateUrls[i], user.id, generationId, i + 1));
+      }
     } catch (genError) {
       await admin
         .from('generations')
