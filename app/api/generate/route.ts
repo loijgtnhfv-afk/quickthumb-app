@@ -1,7 +1,13 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import Replicate from 'replicate';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { composeThumbnail, ALL_STYLES, STYLE_DESCRIPTIONS } from '@/lib/thumbnail-compose';
+import {
+  composeThumbnail,
+  composeQuadGrid,
+  ALL_STYLES,
+  STYLE_DESCRIPTIONS,
+  QUAD_GRID_DESCRIPTION,
+} from '@/lib/thumbnail-compose';
 
 export const maxDuration = 60;
 export const runtime = 'nodejs';
@@ -156,12 +162,19 @@ export async function POST(request: NextRequest) {
 
       // 2) Compose 4 styled thumbnails using overlay text.
       urls = [];
+      const composedBuffers: Buffer[] = [];
       for (let i = 0; i < ALL_STYLES.length; i++) {
         const style = ALL_STYLES[i];
         const composed = await composeThumbnail(bgBuffer, meta.title, style);
+        composedBuffers.push(composed);
         const url = await uploadThumbnail(composed, user.id, generationId, i + 1);
         urls.push(url);
       }
+
+      // 3) Compose 5th option: 2x2 grid of all 4 styles in one image.
+      const quadBuffer = await composeQuadGrid(composedBuffers);
+      const quadUrl = await uploadThumbnail(quadBuffer, user.id, generationId, 5);
+      urls.push(quadUrl);
     } catch (genError) {
       await admin
         .from('generations')
@@ -196,7 +209,10 @@ export async function POST(request: NextRequest) {
       thumbnails: urls.map((url, i) => ({
         id: i + 1,
         url,
-        prompt: STYLE_DESCRIPTIONS[ALL_STYLES[i]],
+        prompt:
+          i < ALL_STYLES.length
+            ? STYLE_DESCRIPTIONS[ALL_STYLES[i]]
+            : QUAD_GRID_DESCRIPTION,
       })),
       generations_used: profile.generations_used + 1,
       generations_limit: profile.generations_limit,
