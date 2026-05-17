@@ -44,7 +44,7 @@ function buildPrompts(title: string): string[] {
   return [
     `Bold YouTube thumbnail design about "${safeTitle}". Large dramatic typography, high contrast, eye-catching colors, professional photography style, cinematic lighting, 16:9 aspect ratio.`,
     `Vibrant YouTube thumbnail about "${safeTitle}". Bright gradient background, expressive face or character, modern design, strong emotional appeal, 16:9 aspect ratio.`,
-    `Minimalist striking YouTube thumbnail about "${safeTitle}". ONE bold subject filling most of the frame, dark contrasting background (deep navy or charcoal), single vivid accent color (electric blue, hot pink, or neon green), high visibility, NO white background, modern flat design with strong silhouette, 16:9 aspect ratio.`,
+    `Editorial-style YouTube thumbnail about "${safeTitle}". A centered portrait or single iconic object clearly visible and filling 70% of the frame, dramatic spotlight from above lighting the subject, deep purple or dark teal gradient background (NOT pure black, NOT plain white), single neon accent color (cyan, magenta, or lime green), modern magazine cover style, 16:9 aspect ratio.`,
     `Dramatic YouTube thumbnail about "${safeTitle}". Neon glow lighting, dark moody background, intense focal point, social media optimized, 16:9 aspect ratio.`,
   ];
 }
