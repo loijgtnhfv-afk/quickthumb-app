@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import Replicate from 'replicate';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { composeThumbnail, ALL_STYLES, STYLE_DESCRIPTIONS } from '@/lib/thumbnail-compose';
 
 export const maxDuration = 60;
 export const runtime = 'nodejs';
@@ -26,7 +27,6 @@ async function fetchVideoMetadata(videoId: string) {
   const res = await fetch(url, { cache: 'no-store' });
   if (!res.ok) {
     const body = await res.text();
-    console.error('YouTube API error', { status: res.status, body, keyLen: apiKey.length });
     throw new Error(`YouTube API ${res.status}: ${body.slice(0, 300)}`);
   }
   const data = await res.json();
@@ -39,17 +39,14 @@ async function fetchVideoMetadata(videoId: string) {
   };
 }
 
-function buildPrompts(title: string): string[] {
+function buildBackgroundPrompt(title: string): string {
   const safeTitle = title.replace(/["]/g, '').slice(0, 120);
-  return [
-    `Bold YouTube thumbnail design about "${safeTitle}". Large dramatic typography, high contrast, eye-catching colors, professional photography style, cinematic lighting, 16:9 aspect ratio.`,
-    `Vibrant YouTube thumbnail about "${safeTitle}". Bright gradient background, expressive face or character, modern design, strong emotional appeal, 16:9 aspect ratio.`,
-    `Editorial-style YouTube thumbnail about "${safeTitle}". A centered portrait or single iconic object clearly visible and filling 70% of the frame, dramatic spotlight from above lighting the subject, deep purple or dark teal gradient background (NOT pure black, NOT plain white), single neon accent color (cyan, magenta, or lime green), modern magazine cover style, 16:9 aspect ratio.`,
-    `Dramatic YouTube thumbnail about "${safeTitle}". Neon glow lighting, dark moody background, intense focal point, social media optimized, 16:9 aspect ratio.`,
-  ];
+  // Background-only image: NO text, NO letters, NO captions, NO logos.
+  // Keep negative space top + bottom for overlay text.
+  return `Cinematic editorial background image inspired by the topic of "${safeTitle}". Atmospheric, professional photography style with rich color and natural lighting. Strong visual storytelling, suggestive of the topic but abstract enough to work as a thumbnail background. NO text, NO letters, NO words, NO captions, NO logos, NO writing of any kind anywhere in the image. Clean composition with negative space at the top and bottom for overlay text to be added later. 16:9 aspect ratio, high quality.`;
 }
 
-async function generateThumbnail(prompt: string): Promise<string> {
+async function generateBackground(prompt: string): Promise<string> {
   const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
   const output = await replicate.run('black-forest-labs/flux-schnell', {
     input: {
@@ -70,23 +67,18 @@ async function generateThumbnail(prompt: string): Promise<string> {
   throw new Error('Unexpected Replicate output shape');
 }
 
-async function downloadAndStore(
-  imageUrl: string,
+async function uploadThumbnail(
+  buffer: Buffer,
   userId: string,
   generationId: string,
   index: number
 ): Promise<string> {
-  const res = await fetch(imageUrl);
-  if (!res.ok) throw new Error(`Failed to download image: ${res.status}`);
-  const buf = Buffer.from(await res.arrayBuffer());
   const path = `${userId}/${generationId}/thumb-${index}.png`;
-
   const admin = createServiceClient();
   const { error } = await admin.storage
     .from('thumbnails')
-    .upload(path, buf, { contentType: 'image/png', upsert: true });
+    .upload(path, buffer, { contentType: 'image/png', upsert: true });
   if (error) throw error;
-
   const { data } = admin.storage.from('thumbnails').getPublicUrl(path);
   return data.publicUrl;
 }
@@ -132,7 +124,7 @@ export async function POST(request: NextRequest) {
     }
 
     const meta = await fetchVideoMetadata(videoId);
-    const prompts = buildPrompts(meta.title);
+    const bgPrompt = buildBackgroundPrompt(meta.title);
 
     const admin = createServiceClient();
     const { data: insertRow, error: insertError } = await admin
@@ -144,7 +136,7 @@ export async function POST(request: NextRequest) {
         video_title: meta.title,
         video_description: meta.description.slice(0, 1000),
         channel_title: meta.channelTitle,
-        prompts,
+        prompts: [bgPrompt],
         status: 'processing',
       })
       .select('id')
@@ -154,16 +146,21 @@ export async function POST(request: NextRequest) {
     }
     const generationId = insertRow.id as string;
 
-    // Sequential generation: 1 request at a time so Replicate's burst-1 rate limit (active when balance < $5) is respected.
     let urls: string[];
     try {
-      const replicateUrls: string[] = [];
-      for (const p of prompts) {
-        replicateUrls.push(await generateThumbnail(p));
-      }
+      // 1) Generate ONE background AI image.
+      const bgUrl = await generateBackground(bgPrompt);
+      const bgRes = await fetch(bgUrl);
+      if (!bgRes.ok) throw new Error(`Failed to fetch background: ${bgRes.status}`);
+      const bgBuffer = Buffer.from(await bgRes.arrayBuffer());
+
+      // 2) Compose 4 styled thumbnails using overlay text.
       urls = [];
-      for (let i = 0; i < replicateUrls.length; i++) {
-        urls.push(await downloadAndStore(replicateUrls[i], user.id, generationId, i + 1));
+      for (let i = 0; i < ALL_STYLES.length; i++) {
+        const style = ALL_STYLES[i];
+        const composed = await composeThumbnail(bgBuffer, meta.title, style);
+        const url = await uploadThumbnail(composed, user.id, generationId, i + 1);
+        urls.push(url);
       }
     } catch (genError) {
       await admin
@@ -199,7 +196,7 @@ export async function POST(request: NextRequest) {
       thumbnails: urls.map((url, i) => ({
         id: i + 1,
         url,
-        prompt: prompts[i],
+        prompt: STYLE_DESCRIPTIONS[ALL_STYLES[i]],
       })),
       generations_used: profile.generations_used + 1,
       generations_limit: profile.generations_limit,
