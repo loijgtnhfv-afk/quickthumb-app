@@ -20,7 +20,8 @@
     "satori": "^0.10.13",
     "@resvg/resvg-js": "^2.6.2",
     "@fontsource/noto-sans-jp": "^5.1.0",
-    "@fontsource/noto-serif-jp": "^5.1.0"
+    "@fontsource/noto-serif-jp": "^5.1.0",
+    "wawoff2": "^2.0.1"
   },
   "devDependencies": {
     "@types/node": "^22",
