@@ -2,10 +2,8 @@ import { NextResponse, type NextRequest } from 'next/server';
 import Replicate from 'replicate';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 
-export const maxDuration = 60; // Vercel function timeout (seconds)
+export const maxDuration = 60;
 export const runtime = 'nodejs';
-
-// ---- helpers ----------------------------------------------------------------
 
 function extractVideoId(url: string): string | null {
   const patterns = [
@@ -26,7 +24,11 @@ async function fetchVideoMetadata(videoId: string) {
 
   const url = `https://www.googleapis.com/youtube/v3/videos?id=${videoId}&part=snippet&key=${apiKey}`;
   const res = await fetch(url, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`YouTube API: ${res.status}`);
+  if (!res.ok) {
+    const body = await res.text();
+    console.error('YouTube API error', { status: res.status, body, keyLen: apiKey.length, keyHead: apiKey.slice(0, 6) });
+    throw new Error(`YouTube API ${res.status}: ${body.slice(0, 300)}`);
+  }
   const data = await res.json();
   const item = data.items?.[0];
   if (!item) throw new Error('Video not found or private');
@@ -58,11 +60,9 @@ async function generateThumbnail(prompt: string): Promise<string> {
       output_quality: 90,
     },
   });
-  // Output is either FileOutput[] (new SDK) or string[] (old). Normalize.
   if (Array.isArray(output) && output[0]) {
     const first = output[0];
     if (typeof first === 'string') return first;
-    // FileOutput has a `.url()` method
     if (typeof (first as { url?: () => string }).url === 'function') {
       return (first as { url: () => string }).url();
     }
@@ -91,8 +91,6 @@ async function downloadAndStore(
   return data.publicUrl;
 }
 
-// ---- handler ----------------------------------------------------------------
-
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -114,7 +112,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid YouTube URL' }, { status: 400 });
     }
 
-    // Check 5-generation limit
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('plan, generations_used, generations_limit')
@@ -134,11 +131,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Fetch metadata
     const meta = await fetchVideoMetadata(videoId);
     const prompts = buildPrompts(meta.title);
 
-    // Insert pending generation row
     const admin = createServiceClient();
     const { data: insertRow, error: insertError } = await admin
       .from('generations')
@@ -159,7 +154,6 @@ export async function POST(request: NextRequest) {
     }
     const generationId = insertRow.id as string;
 
-    // Generate 4 thumbnails in parallel
     let urls: string[];
     try {
       const replicateUrls = await Promise.all(prompts.map((p) => generateThumbnail(p)));
@@ -179,19 +173,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: msg }, { status: 500 });
     }
 
-    // Update generation row with completed urls
     await admin
       .from('generations')
       .update({ status: 'completed', thumbnail_urls: urls })
       .eq('id', generationId);
 
-    // Increment counter
     await admin
       .from('profiles')
       .update({ generations_used: profile.generations_used + 1 })
       .eq('id', user.id);
 
-    // Log usage event
     await admin.from('usage_logs').insert({
       user_id: user.id,
       event_type: 'generation_completed',
@@ -210,6 +201,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Internal error';
+    console.error('API /generate error', msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
