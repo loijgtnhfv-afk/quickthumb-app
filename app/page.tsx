@@ -1,6 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
+import type { User } from '@supabase/supabase-js';
 
 type Status = 'idle' | 'loading' | 'success' | 'error';
 
@@ -10,12 +12,11 @@ interface Thumbnail {
   prompt: string;
 }
 
-const MOCK_THUMBNAILS: Thumbnail[] = [
-  { id: 1, url: 'https://placehold.co/1280x720/667eea/ffffff/png?text=Thumbnail+1', prompt: 'Bold typography, high contrast' },
-  { id: 2, url: 'https://placehold.co/1280x720/f093fb/ffffff/png?text=Thumbnail+2', prompt: 'Vibrant gradient, character focus' },
-  { id: 3, url: 'https://placehold.co/1280x720/4facfe/ffffff/png?text=Thumbnail+3', prompt: 'Minimalist, single subject' },
-  { id: 4, url: 'https://placehold.co/1280x720/fa709a/ffffff/png?text=Thumbnail+4', prompt: 'Dramatic lighting, emotion' },
-];
+interface Profile {
+  plan: 'free' | 'pro';
+  generations_used: number;
+  generations_limit: number;
+}
 
 function isValidYouTubeUrl(url: string): boolean {
   const patterns = [
@@ -27,15 +28,60 @@ function isValidYouTubeUrl(url: string): boolean {
 }
 
 export default function Home() {
+  const supabase = createClient();
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
   const [url, setUrl] = useState('');
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState('');
   const [results, setResults] = useState<Thumbnail[]>([]);
 
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const { data } = await supabase.auth.getUser();
+      if (!mounted) return;
+      setUser(data.user);
+      if (data.user) {
+        const { data: p } = await supabase
+          .from('profiles')
+          .select('plan, generations_used, generations_limit')
+          .eq('id', data.user.id)
+          .single();
+        if (mounted) setProfile(p as Profile | null);
+      }
+      setAuthLoading(false);
+    })();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      if (!session?.user) setProfile(null);
+    });
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    setProfile(null);
+    setResults([]);
+    setStatus('idle');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
+    if (!user) {
+      window.location.href = '/auth?mode=signup';
+      return;
+    }
     if (!url.trim()) {
       setError('Please paste a YouTube URL.');
       return;
@@ -47,11 +93,33 @@ export default function Home() {
 
     setStatus('loading');
 
-    // Mock: simulate 4-second generation (replace with /api/generate later)
-    await new Promise((r) => setTimeout(r, 4000));
-
-    setResults(MOCK_THUMBNAILS);
-    setStatus('success');
+    try {
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ youtube_url: url }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 402) {
+          setError(`You’ve used all ${data.limit} free generations. Upgrade to Pro for 150/month.`);
+        } else {
+          setError(data.error || 'Generation failed.');
+        }
+        setStatus('error');
+        return;
+      }
+      setResults(data.thumbnails as Thumbnail[]);
+      setProfile((prev) =>
+        prev
+          ? { ...prev, generations_used: data.generations_used }
+          : { plan: 'free', generations_used: data.generations_used, generations_limit: data.generations_limit }
+      );
+      setStatus('success');
+    } catch {
+      setError('Network error. Please try again.');
+      setStatus('error');
+    }
   };
 
   const handleDownload = (thumb: Thumbnail) => {
@@ -72,6 +140,8 @@ export default function Home() {
     setError('');
   };
 
+  const remaining = profile ? Math.max(0, profile.generations_limit - profile.generations_used) : null;
+
   return (
     <main
       style={{
@@ -79,11 +149,66 @@ export default function Home() {
         background: 'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)',
         color: '#ffffff',
         fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
-        padding: '48px 20px',
+        padding: '32px 20px 48px',
       }}
     >
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-        <header style={{ textAlign: 'center', marginBottom: 48 }}>
+        {/* Header */}
+        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
+          <a href="/" style={{ color: '#fff', textDecoration: 'none', fontSize: 18, fontWeight: 700 }}>
+            Quickthumb
+          </a>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14 }}>
+            {authLoading ? null : user ? (
+              <>
+                {remaining !== null && (
+                  <span style={{ opacity: 0.7 }}>
+                    {remaining}/{profile!.generations_limit} left
+                  </span>
+                )}
+                <span style={{ opacity: 0.85, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {user.email}
+                </span>
+                <button
+                  onClick={handleSignOut}
+                  style={{
+                    padding: '6px 12px',
+                    fontSize: 13,
+                    background: 'transparent',
+                    color: '#fff',
+                    border: '1px solid rgba(255,255,255,0.25)',
+                    borderRadius: 8,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Sign out
+                </button>
+              </>
+            ) : (
+              <>
+                <a href="/auth" style={{ color: 'rgba(255,255,255,0.75)', textDecoration: 'none' }}>
+                  Sign in
+                </a>
+                <a
+                  href="/auth?mode=signup"
+                  style={{
+                    padding: '6px 14px',
+                    background: 'linear-gradient(135deg, #a78bfa 0%, #f0abfc 100%)',
+                    color: '#0f0c29',
+                    fontWeight: 600,
+                    textDecoration: 'none',
+                    borderRadius: 8,
+                  }}
+                >
+                  Sign up
+                </a>
+              </>
+            )}
+          </div>
+        </header>
+
+        {/* Hero */}
+        <div style={{ textAlign: 'center', marginBottom: 40 }}>
           <div
             style={{
               display: 'inline-block',
@@ -117,8 +242,9 @@ export default function Home() {
             Paste any YouTube URL. Get 4 AI-generated thumbnail options instantly.
             5 free · No credit card.
           </p>
-        </header>
+        </div>
 
+        {/* Form */}
         <form
           onSubmit={handleSubmit}
           style={{
@@ -163,9 +289,10 @@ export default function Home() {
                 fontSize: 16,
                 fontWeight: 600,
                 color: '#0f0c29',
-                background: status === 'loading'
-                  ? 'rgba(255,255,255,0.4)'
-                  : 'linear-gradient(135deg, #a78bfa 0%, #f0abfc 100%)',
+                background:
+                  status === 'loading'
+                    ? 'rgba(255,255,255,0.4)'
+                    : 'linear-gradient(135deg, #a78bfa 0%, #f0abfc 100%)',
                 border: 'none',
                 borderRadius: 10,
                 cursor: status === 'loading' ? 'wait' : 'pointer',
@@ -173,7 +300,7 @@ export default function Home() {
                 transition: 'transform 0.15s ease',
               }}
             >
-              {status === 'loading' ? 'Generating...' : 'Generate'}
+              {status === 'loading' ? 'Generating...' : user ? 'Generate' : 'Sign up & generate'}
             </button>
           </div>
           {error && (
@@ -203,7 +330,8 @@ export default function Home() {
                 key={i}
                 style={{
                   aspectRatio: '16/9',
-                  background: 'linear-gradient(90deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.04) 100%)',
+                  background:
+                    'linear-gradient(90deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.04) 100%)',
                   backgroundSize: '200% 100%',
                   borderRadius: 12,
                   animation: 'shimmer 1.5s infinite linear',
@@ -259,7 +387,9 @@ export default function Home() {
                     style={{ width: '100%', display: 'block', aspectRatio: '16/9', objectFit: 'cover' }}
                   />
                   <div style={{ padding: 14 }}>
-                    <p style={{ fontSize: 13, opacity: 0.7, margin: '0 0 12px' }}>{thumb.prompt}</p>
+                    <p style={{ fontSize: 13, opacity: 0.7, margin: '0 0 12px', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                      {thumb.prompt}
+                    </p>
                     <button
                       onClick={() => handleDownload(thumb)}
                       style={{
