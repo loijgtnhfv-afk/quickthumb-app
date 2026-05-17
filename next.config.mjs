@@ -8,6 +8,7 @@ const nextConfig = {
       { protocol: 'https', hostname: 'replicate.delivery' },
     ],
   },
+  serverExternalPackages: ['sharp', '@resvg/resvg-js'],
   outputFileTracingIncludes: {
     '/api/generate': [
       './node_modules/@fontsource/noto-sans-jp/files/*.woff2',
