@@ -438,3 +438,42 @@ export async function composeThumbnail(
 }
 
 export const ALL_STYLES: ThumbnailStyle[] = ['vlog', 'tech', 'gaming', 'editorial'];
+
+// ---- Quad grid (5th composite) ---------------------------------------------
+
+/**
+ * Combine 4 thumbnails (1280x720 each) into a single 2x2 grid (1280x720 total,
+ * each quadrant 640x360). Useful as a "preview-all" option that lets the user
+ * see every style at a glance.
+ */
+export async function composeQuadGrid(thumbnails: Buffer[]): Promise<Buffer> {
+  if (thumbnails.length !== 4) {
+    throw new Error(`composeQuadGrid expects exactly 4 thumbnails, got ${thumbnails.length}`);
+  }
+
+  const resized = await Promise.all(
+    thumbnails.map((buf) =>
+      sharp(buf).resize(640, 360, { fit: 'cover', position: 'center' }).png().toBuffer()
+    )
+  );
+
+  return await sharp({
+    create: {
+      width: 1280,
+      height: 720,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 1 },
+    },
+  })
+    .composite([
+      { input: resized[0], top: 0, left: 0 },
+      { input: resized[1], top: 0, left: 640 },
+      { input: resized[2], top: 360, left: 0 },
+      { input: resized[3], top: 360, left: 640 },
+    ])
+    .png({ quality: 92, compressionLevel: 8 })
+    .toBuffer();
+}
+
+export const QUAD_GRID_DESCRIPTION =
+  'All 4 styles in one — 2×2 grid preview for choosing your favorite';
