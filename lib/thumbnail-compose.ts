@@ -1,47 +1,51 @@
+import satori from 'satori';
+import { Resvg } from '@resvg/resvg-js';
 import sharp from 'sharp';
 import fs from 'fs';
 import path from 'path';
+import React from 'react';
 
 // ---- Font loading (cached) --------------------------------------------------
 
-let cachedFonts: { sansBlack: string; sansBold: string; serifBold: string } | null = null;
+type Fonts = {
+  sansBlack: ArrayBuffer;
+  sansBold: ArrayBuffer;
+  serifBold: ArrayBuffer;
+};
 
-function loadFonts() {
+let cachedFonts: Fonts | null = null;
+
+function bufferToArrayBuffer(buf: Buffer): ArrayBuffer {
+  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+}
+
+function loadFonts(): Fonts {
   if (cachedFonts) return cachedFonts;
 
+  const root = process.cwd();
   const sansBlackPath = path.join(
-    process.cwd(),
+    root,
     'node_modules/@fontsource/noto-sans-jp/files/noto-sans-jp-japanese-900-normal.woff2'
   );
   const sansBoldPath = path.join(
-    process.cwd(),
+    root,
     'node_modules/@fontsource/noto-sans-jp/files/noto-sans-jp-japanese-700-normal.woff2'
   );
   const serifBoldPath = path.join(
-    process.cwd(),
+    root,
     'node_modules/@fontsource/noto-serif-jp/files/noto-serif-jp-japanese-700-normal.woff2'
   );
 
   cachedFonts = {
-    sansBlack: fs.readFileSync(sansBlackPath).toString('base64'),
-    sansBold: fs.readFileSync(sansBoldPath).toString('base64'),
-    serifBold: fs.readFileSync(serifBoldPath).toString('base64'),
+    sansBlack: bufferToArrayBuffer(fs.readFileSync(sansBlackPath)),
+    sansBold: bufferToArrayBuffer(fs.readFileSync(sansBoldPath)),
+    serifBold: bufferToArrayBuffer(fs.readFileSync(serifBoldPath)),
   };
   return cachedFonts;
 }
 
-// ---- Helpers ----------------------------------------------------------------
+// ---- Title wrapping ---------------------------------------------------------
 
-function escapeXml(s: string): string {
-  return s.replace(/[<>&'"]/g, (c) =>
-    ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[c]!)
-  );
-}
-
-/**
- * Break a Japanese title into up to `maxLines` lines so it roughly fits
- * within `targetCharsPerLine` characters per line. Simple greedy wrap.
- */
 function wrapTitle(title: string, targetCharsPerLine: number, maxLines: number): string[] {
   const lines: string[] = [];
   let remaining = title.trim();
@@ -50,7 +54,6 @@ function wrapTitle(title: string, targetCharsPerLine: number, maxLines: number):
       lines.push(remaining);
       break;
     }
-    // Try to break on a punctuation/space near the target index
     let breakAt = targetCharsPerLine;
     const slice = remaining.slice(0, targetCharsPerLine + 4);
     const punctMatch = slice.match(/^.{0,}[\s、。!?!?,.…・]/u);
@@ -61,14 +64,6 @@ function wrapTitle(title: string, targetCharsPerLine: number, maxLines: number):
     remaining = remaining.slice(breakAt).trim();
   }
   return lines;
-}
-
-function fontFaceCss(fonts: { sansBlack: string; sansBold: string; serifBold: string }): string {
-  return `
-    @font-face { font-family: 'JpSansBlack'; src: url(data:font/woff2;base64,${fonts.sansBlack}) format('woff2'); font-weight: 900; }
-    @font-face { font-family: 'JpSansBold';  src: url(data:font/woff2;base64,${fonts.sansBold}) format('woff2'); font-weight: 700; }
-    @font-face { font-family: 'JpSerifBold'; src: url(data:font/woff2;base64,${fonts.serifBold}) format('woff2'); font-weight: 700; }
-  `;
 }
 
 // ---- Style definitions ------------------------------------------------------
@@ -82,108 +77,318 @@ export const STYLE_DESCRIPTIONS: Record<ThumbnailStyle, string> = {
   editorial: 'Editorial / Calm style — subtle serif title on lower bar',
 };
 
-function buildVlogSvg(title: string, fonts: ReturnType<typeof loadFonts>): string {
+const h = React.createElement;
+
+function buildVlogElement(title: string, bgDataUrl: string): React.ReactElement {
   const lines = wrapTitle(title, 10, 2);
-  const fontSize = lines.length === 1 ? 120 : 100;
-  const lineHeight = fontSize * 1.15;
-  const totalHeight = lineHeight * lines.length;
-  const startY = 360 - totalHeight / 2 + fontSize * 0.85;
+  const fontSize = lines.length === 1 ? 120 : 96;
 
-  const lineTags = lines
-    .map(
-      (line, i) =>
-        `<text x="640" y="${startY + i * lineHeight}" text-anchor="middle" font-family="JpSerifBold" font-size="${fontSize}" font-weight="700" fill="white" stroke="black" stroke-width="6" paint-order="stroke">${escapeXml(line)}</text>`
+  return h(
+    'div',
+    {
+      style: {
+        display: 'flex',
+        width: '100%',
+        height: '100%',
+        position: 'relative',
+      },
+    },
+    h('img', {
+      src: bgDataUrl,
+      style: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        objectFit: 'cover',
+      },
+    }),
+    // Dark vignette overlay
+    h('div', {
+      style: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        background:
+          'linear-gradient(to bottom, rgba(0,0,0,0.45), rgba(0,0,0,0.10) 50%, rgba(0,0,0,0.55))',
+      },
+    }),
+    // Top thin line
+    h('div', {
+      style: {
+        position: 'absolute',
+        top: 198,
+        left: 240,
+        width: 800,
+        height: 2,
+        background: 'rgba(255,255,255,0.9)',
+      },
+    }),
+    // Bottom thin line
+    h('div', {
+      style: {
+        position: 'absolute',
+        top: 540,
+        left: 240,
+        width: 800,
+        height: 2,
+        background: 'rgba(255,255,255,0.9)',
+      },
+    }),
+    // Centered serif title
+    h(
+      'div',
+      {
+        style: {
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontFamily: 'JpSerifBold',
+          fontWeight: 700,
+          fontSize,
+          color: 'white',
+          textAlign: 'center',
+          textShadow:
+            '0 0 12px rgba(0,0,0,0.85), 0 0 4px rgba(0,0,0,0.95), 4px 4px 0 rgba(0,0,0,0.6)',
+          padding: '0 80px',
+          lineHeight: 1.18,
+        },
+      },
+      ...lines.map((line, i) =>
+        h('div', { key: i, style: { display: 'flex' } }, line)
+      )
     )
-    .join('\n');
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
-    <defs><style>${fontFaceCss(fonts)}</style>
-      <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="rgba(0,0,0,0.35)"/>
-        <stop offset="0.5" stop-color="rgba(0,0,0,0.15)"/>
-        <stop offset="1" stop-color="rgba(0,0,0,0.45)"/>
-      </linearGradient>
-    </defs>
-    <rect width="1280" height="720" fill="url(#bg)"/>
-    <line x1="240" y1="200" x2="1040" y2="200" stroke="white" stroke-width="2" opacity="0.85"/>
-    <line x1="240" y1="540" x2="1040" y2="540" stroke="white" stroke-width="2" opacity="0.85"/>
-    ${lineTags}
-  </svg>`;
+  );
 }
 
-function buildTechSvg(title: string, fonts: ReturnType<typeof loadFonts>): string {
-  const lines = wrapTitle(title, 10, 3);
-  const fontSize = lines.length <= 2 ? 92 : 76;
-  const lineHeight = fontSize * 1.1;
-  const totalHeight = lineHeight * lines.length;
-  const startY = 360 - totalHeight / 2 + fontSize * 0.85;
+function buildTechElement(title: string, bgDataUrl: string): React.ReactElement {
+  const lines = wrapTitle(title, 9, 3);
+  const fontSize = lines.length <= 2 ? 88 : 72;
 
-  const lineTags = lines
-    .map(
-      (line, i) =>
-        `<text x="60" y="${startY + i * lineHeight}" text-anchor="start" font-family="JpSansBlack" font-size="${fontSize}" font-weight="900" fill="white" stroke="black" stroke-width="10" paint-order="stroke">${escapeXml(line)}</text>`
+  return h(
+    'div',
+    {
+      style: {
+        display: 'flex',
+        width: '100%',
+        height: '100%',
+        position: 'relative',
+      },
+    },
+    h('img', {
+      src: bgDataUrl,
+      style: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        objectFit: 'cover',
+      },
+    }),
+    // Left gradient panel
+    h('div', {
+      style: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: 800,
+        height: '100%',
+        background:
+          'linear-gradient(to right, rgba(0,0,0,0.85), rgba(0,0,0,0.5) 60%, rgba(0,0,0,0))',
+      },
+    }),
+    // Left-aligned heavy title
+    h(
+      'div',
+      {
+        style: {
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: 760,
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-start',
+          justifyContent: 'center',
+          fontFamily: 'JpSansBlack',
+          fontWeight: 900,
+          fontSize,
+          color: 'white',
+          padding: '0 50px',
+          lineHeight: 1.12,
+          textShadow:
+            '0 0 0 #000, 4px 4px 0 #000, -4px -4px 0 #000, 4px -4px 0 #000, -4px 4px 0 #000, 4px 0 0 #000, -4px 0 0 #000, 0 4px 0 #000, 0 -4px 0 #000',
+        },
+      },
+      ...lines.map((line, i) =>
+        h('div', { key: i, style: { display: 'flex' } }, line)
+      )
     )
-    .join('\n');
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
-    <defs><style>${fontFaceCss(fonts)}</style>
-      <linearGradient id="leftFade" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0" stop-color="rgba(0,0,0,0.65)"/>
-        <stop offset="0.55" stop-color="rgba(0,0,0,0.25)"/>
-        <stop offset="1" stop-color="rgba(0,0,0,0)"/>
-      </linearGradient>
-    </defs>
-    <rect width="760" height="720" fill="url(#leftFade)"/>
-    ${lineTags}
-  </svg>`;
+  );
 }
 
-function buildGamingSvg(title: string, fonts: ReturnType<typeof loadFonts>): string {
+function buildGamingElement(title: string, bgDataUrl: string): React.ReactElement {
   const lines = wrapTitle(title, 12, 2);
-  const fontSize = lines.length === 1 ? 124 : 96;
-  const lineHeight = fontSize * 1.05;
-  const startY = 720 - 50 - (lines.length - 1) * lineHeight;
+  const fontSize = lines.length === 1 ? 124 : 92;
 
-  const lineTags = lines
-    .map(
-      (line, i) =>
-        `<text x="640" y="${startY + i * lineHeight}" text-anchor="middle" font-family="JpSansBlack" font-size="${fontSize}" font-weight="900" fill="white" stroke="#c00" stroke-width="10" paint-order="stroke" transform="skewX(-6)" transform-origin="640 ${startY + i * lineHeight}">${escapeXml(line)}</text>`
+  return h(
+    'div',
+    {
+      style: {
+        display: 'flex',
+        width: '100%',
+        height: '100%',
+        position: 'relative',
+      },
+    },
+    h('img', {
+      src: bgDataUrl,
+      style: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        objectFit: 'cover',
+      },
+    }),
+    // Bottom dark gradient
+    h('div', {
+      style: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        background:
+          'linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,0) 50%, rgba(0,0,0,0.9))',
+      },
+    }),
+    // Big bottom impact title with red shadow
+    h(
+      'div',
+      {
+        style: {
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: 30,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontFamily: 'JpSansBlack',
+          fontWeight: 900,
+          fontSize,
+          color: 'white',
+          textAlign: 'center',
+          padding: '0 40px',
+          lineHeight: 1.05,
+          transform: 'skewX(-6deg)',
+          textShadow:
+            '6px 6px 0 #c00000, 6px 6px 0 #c00000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000',
+        },
+      },
+      ...lines.map((line, i) =>
+        h('div', { key: i, style: { display: 'flex' } }, line)
+      )
     )
-    .join('\n');
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
-    <defs><style>${fontFaceCss(fonts)}</style>
-      <linearGradient id="bottomFade" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="rgba(0,0,0,0)"/>
-        <stop offset="0.55" stop-color="rgba(0,0,0,0)"/>
-        <stop offset="1" stop-color="rgba(0,0,0,0.85)"/>
-      </linearGradient>
-    </defs>
-    <rect width="1280" height="720" fill="url(#bottomFade)"/>
-    ${lineTags}
-  </svg>`;
+  );
 }
 
-function buildEditorialSvg(title: string, fonts: ReturnType<typeof loadFonts>): string {
+function buildEditorialElement(title: string, bgDataUrl: string): React.ReactElement {
   const lines = wrapTitle(title, 14, 2);
-  const fontSize = lines.length === 1 ? 80 : 64;
-  const lineHeight = fontSize * 1.2;
-  const totalHeight = lineHeight * lines.length;
+  const fontSize = lines.length === 1 ? 80 : 60;
   const barHeight = 220;
-  const startY = 720 - barHeight + (barHeight - totalHeight) / 2 + fontSize * 0.85;
 
-  const lineTags = lines
-    .map(
-      (line, i) =>
-        `<text x="640" y="${startY + i * lineHeight}" text-anchor="middle" font-family="JpSerifBold" font-size="${fontSize}" font-weight="700" fill="white">${escapeXml(line)}</text>`
+  return h(
+    'div',
+    {
+      style: {
+        display: 'flex',
+        width: '100%',
+        height: '100%',
+        position: 'relative',
+      },
+    },
+    h('img', {
+      src: bgDataUrl,
+      style: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        objectFit: 'cover',
+      },
+    }),
+    // Bottom translucent bar
+    h('div', {
+      style: {
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom: 0,
+        height: barHeight,
+        background: 'rgba(15,12,41,0.78)',
+      },
+    }),
+    // Title on the bar
+    h(
+      'div',
+      {
+        style: {
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: barHeight,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontFamily: 'JpSerifBold',
+          fontWeight: 700,
+          fontSize,
+          color: 'white',
+          textAlign: 'center',
+          padding: '0 60px',
+          lineHeight: 1.25,
+        },
+      },
+      ...lines.map((line, i) =>
+        h('div', { key: i, style: { display: 'flex' } }, line)
+      )
     )
-    .join('\n');
+  );
+}
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
-    <defs><style>${fontFaceCss(fonts)}</style></defs>
-    <rect x="0" y="${720 - barHeight}" width="1280" height="${barHeight}" fill="rgba(15,12,41,0.78)"/>
-    ${lineTags}
-  </svg>`;
+function buildElement(
+  style: ThumbnailStyle,
+  title: string,
+  bgDataUrl: string
+): React.ReactElement {
+  switch (style) {
+    case 'vlog':
+      return buildVlogElement(title, bgDataUrl);
+    case 'tech':
+      return buildTechElement(title, bgDataUrl);
+    case 'gaming':
+      return buildGamingElement(title, bgDataUrl);
+    case 'editorial':
+      return buildEditorialElement(title, bgDataUrl);
+  }
 }
 
 // ---- Main compose function --------------------------------------------------
@@ -195,27 +400,34 @@ export async function composeThumbnail(
 ): Promise<Buffer> {
   const fonts = loadFonts();
 
-  let svg: string;
-  switch (style) {
-    case 'vlog':
-      svg = buildVlogSvg(title, fonts);
-      break;
-    case 'tech':
-      svg = buildTechSvg(title, fonts);
-      break;
-    case 'gaming':
-      svg = buildGamingSvg(title, fonts);
-      break;
-    case 'editorial':
-      svg = buildEditorialSvg(title, fonts);
-      break;
-  }
-
-  return await sharp(backgroundImageBuffer)
+  // 1) Resize background to 1280x720 and encode as data URL
+  const bgPng = await sharp(backgroundImageBuffer)
     .resize(1280, 720, { fit: 'cover', position: 'center' })
-    .composite([{ input: Buffer.from(svg), top: 0, left: 0 }])
-    .png({ quality: 92, compressionLevel: 8 })
+    .png()
     .toBuffer();
+  const bgDataUrl = `data:image/png;base64,${bgPng.toString('base64')}`;
+
+  // 2) Build JSX-like element
+  const element = buildElement(style, title, bgDataUrl);
+
+  // 3) Render to SVG with Satori (handles Japanese fonts as glyph paths)
+  const svg = await satori(element, {
+    width: 1280,
+    height: 720,
+    fonts: [
+      { name: 'JpSansBlack', data: fonts.sansBlack, weight: 900, style: 'normal' },
+      { name: 'JpSansBold', data: fonts.sansBold, weight: 700, style: 'normal' },
+      { name: 'JpSerifBold', data: fonts.serifBold, weight: 700, style: 'normal' },
+    ],
+  });
+
+  // 4) Rasterize SVG to PNG with Resvg
+  const resvg = new Resvg(svg, {
+    fitTo: { mode: 'width', value: 1280 },
+  });
+  const pngData = resvg.render().asPng();
+
+  return Buffer.from(pngData);
 }
 
 export const ALL_STYLES: ThumbnailStyle[] = ['vlog', 'tech', 'gaming', 'editorial'];
