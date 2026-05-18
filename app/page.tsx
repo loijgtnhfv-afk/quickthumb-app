@@ -9,6 +9,7 @@ type Status = 'idle' | 'loading' | 'success' | 'error';
 interface Thumbnail {
   id: number;
   url: string;
+  image_url: string;
   prompt: string;
 }
 
@@ -122,10 +123,10 @@ export default function Home() {
     }
   };
 
-  const handleDownload = (thumb: Thumbnail) => {
+  const handleDownload = (url: string, filename: string) => {
     const a = document.createElement('a');
-    a.href = thumb.url;
-    a.download = `quickthumb-${thumb.id}.png`;
+    a.href = url;
+    a.download = filename;
     a.target = '_blank';
     a.rel = 'noopener noreferrer';
     document.body.appendChild(a);
@@ -391,22 +392,40 @@ export default function Home() {
                     <p style={{ fontSize: 13, opacity: 0.7, margin: '0 0 12px', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                       {thumb.prompt}
                     </p>
-                    <button
-                      onClick={() => handleDownload(thumb)}
-                      style={{
-                        width: '100%',
-                        padding: '10px 14px',
-                        fontSize: 14,
-                        fontWeight: 600,
-                        color: '#0f0c29',
-                        background: '#fff',
-                        border: 'none',
-                        borderRadius: 8,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Download
-                    </button>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <button
+                        onClick={() => handleDownload(thumb.url, `quickthumb-${thumb.id}.png`)}
+                        style={{
+                          width: '100%',
+                          padding: '10px 14px',
+                          fontSize: 14,
+                          fontWeight: 600,
+                          color: '#0f0c29',
+                          background: '#fff',
+                          border: 'none',
+                          borderRadius: 8,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Download
+                      </button>
+                      <button
+                        onClick={() => handleDownload(thumb.image_url, `quickthumb-${thumb.id}-image.png`)}
+                        style={{
+                          width: '100%',
+                          padding: '8px 14px',
+                          fontSize: 13,
+                          fontWeight: 500,
+                          color: '#fff',
+                          background: 'transparent',
+                          border: '1px solid rgba(255,255,255,0.3)',
+                          borderRadius: 8,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Image only
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}

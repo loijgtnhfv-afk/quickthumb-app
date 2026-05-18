@@ -4,9 +4,11 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import {
   composeThumbnail,
   composeQuadGrid,
+  composeQuadGridRaw,
   ALL_STYLES,
   STYLE_DESCRIPTIONS,
   QUAD_GRID_DESCRIPTION,
+  type ThumbnailStyle,
 } from '@/lib/thumbnail-compose';
 
 export const maxDuration = 60;
@@ -45,11 +47,24 @@ async function fetchVideoMetadata(videoId: string) {
   };
 }
 
-function buildBackgroundPrompt(title: string): string {
+const NEGATIVE_PROMPT =
+  'NO text, NO letters, NO words, NO captions, NO logos, NO writing of any kind anywhere in the image';
+
+function buildStylePrompt(title: string, style: ThumbnailStyle): string {
   const safeTitle = title.replace(/["]/g, '').slice(0, 120);
-  // Background-only image: NO text, NO letters, NO captions, NO logos.
-  // Keep negative space top + bottom for overlay text.
-  return `Cinematic editorial background image inspired by the topic of "${safeTitle}". Atmospheric, professional photography style with rich color and natural lighting. Strong visual storytelling, suggestive of the topic but abstract enough to work as a thumbnail background. NO text, NO letters, NO words, NO captions, NO logos, NO writing of any kind anywhere in the image. Clean composition with negative space at the top and bottom for overlay text to be added later. 16:9 aspect ratio, high quality.`;
+  const tail = `${NEGATIVE_PROMPT}. 16:9 aspect ratio, high quality, professional photography.`;
+  const topic = `inspired by the topic of "${safeTitle}"`;
+
+  switch (style) {
+    case 'vlog':
+      return `Warm lifestyle photography ${topic}. Soft natural daylight, golden-hour cream/peach palette, shallow depth of field, cozy intimate vibe, slightly blurred background. Personal vlog aesthetic. Negative space at top and bottom for overlay text. ${tail}`;
+    case 'tech':
+      return `Sleek modern tech editorial product photography ${topic}. Crisp studio lighting, cool tones with cyan and deep navy accents, clean lines, premium gadget/desk-setup feel. Subject biased to the right; left side darker for overlay text. ${tail}`;
+    case 'gaming':
+      return `Cinematic high-energy action scene ${topic}. Dramatic dark lighting with vibrant red and neon accents, deep blacks, saturated highlights, strong rim light, intense atmosphere. Hero subject centered with the bottom area darker for overlay text. Comic-book style energy. ${tail}`;
+    case 'editorial':
+      return `Minimalist editorial magazine photography ${topic}. Refined composition, muted neutral palette (off-white, soft gray, warm beige), generous negative space, sophisticated calm mood, high-end print-magazine aesthetic. Subject in the upper half; lower third clean for overlay text. ${tail}`;
+  }
 }
 
 async function generateBackground(prompt: string): Promise<string> {
@@ -73,13 +88,13 @@ async function generateBackground(prompt: string): Promise<string> {
   throw new Error('Unexpected Replicate output shape');
 }
 
-async function uploadThumbnail(
+async function uploadPng(
   buffer: Buffer,
   userId: string,
   generationId: string,
-  index: number
+  filename: string
 ): Promise<string> {
-  const path = `${userId}/${generationId}/thumb-${index}.png`;
+  const path = `${userId}/${generationId}/${filename}.png`;
   const admin = createServiceClient();
   const { error } = await admin.storage
     .from('thumbnails')
@@ -130,7 +145,7 @@ export async function POST(request: NextRequest) {
     }
 
     const meta = await fetchVideoMetadata(videoId);
-    const bgPrompt = buildBackgroundPrompt(meta.title);
+    const stylePrompts = ALL_STYLES.map((s) => buildStylePrompt(meta.title, s));
 
     const admin = createServiceClient();
     const { data: insertRow, error: insertError } = await admin
@@ -142,7 +157,7 @@ export async function POST(request: NextRequest) {
         video_title: meta.title,
         video_description: meta.description.slice(0, 1000),
         channel_title: meta.channelTitle,
-        prompts: [bgPrompt],
+        prompts: stylePrompts,
         status: 'processing',
       })
       .select('id')
@@ -152,27 +167,48 @@ export async function POST(request: NextRequest) {
     }
     const generationId = insertRow.id as string;
 
-    let urls: string[];
+    let composedUrls: string[];
+    let rawUrls: string[];
     try {
-      // 1) Generate ONE background AI image.
-      const bgUrl = await generateBackground(bgPrompt);
-      const bgRes = await fetch(bgUrl);
-      if (!bgRes.ok) throw new Error(`Failed to fetch background: ${bgRes.status}`);
-      const bgBuffer = Buffer.from(await bgRes.arrayBuffer());
+      // 1) Generate 4 style-specific backgrounds in parallel.
+      const bgBuffers = await Promise.all(
+        stylePrompts.map(async (prompt) => {
+          const bgUrl = await generateBackground(prompt);
+          const bgRes = await fetch(bgUrl);
+          if (!bgRes.ok) throw new Error(`Failed to fetch background: ${bgRes.status}`);
+          return Buffer.from(await bgRes.arrayBuffer());
+        })
+      );
 
-      // 2) Compose 4 styled thumbnails using overlay text.
-      urls = [];
-      for (let i = 0; i < ALL_STYLES.length; i++) {
-        const style = ALL_STYLES[i];
-        const composed = await composeThumbnail(bgBuffer, meta.title, style);
-        const url = await uploadThumbnail(composed, user.id, generationId, i + 1);
-        urls.push(url);
-      }
+      // 2) Compose 4 styled thumbnails, each using its own background.
+      const composedBuffers = await Promise.all(
+        ALL_STYLES.map((style, i) =>
+          composeThumbnail(bgBuffers[i], meta.title, style)
+        )
+      );
 
-      // 3) Compose 5th option: raw bg tiled 2x2 with one centered keyword.
-      const quadBuffer = await composeQuadGrid(bgBuffer, meta.title);
-      const quadUrl = await uploadThumbnail(quadBuffer, user.id, generationId, 5);
-      urls.push(quadUrl);
+      // 3) 5th composite: 4 different bgs tiled 2x2 + central keyword.
+      // 5th raw: same tile, no keyword.
+      const [quadBuffer, quadRawBuffer] = await Promise.all([
+        composeQuadGrid(bgBuffers, meta.title),
+        composeQuadGridRaw(bgBuffers),
+      ]);
+
+      // 4) Upload everything in parallel.
+      const composedTargets = [...composedBuffers, quadBuffer];
+      const rawTargets = [...bgBuffers, quadRawBuffer];
+      [composedUrls, rawUrls] = await Promise.all([
+        Promise.all(
+          composedTargets.map((buf, i) =>
+            uploadPng(buf, user.id, generationId, `thumb-${i + 1}`)
+          )
+        ),
+        Promise.all(
+          rawTargets.map((buf, i) =>
+            uploadPng(buf, user.id, generationId, `raw-${i + 1}`)
+          )
+        ),
+      ]);
     } catch (genError) {
       await admin
         .from('generations')
@@ -188,7 +224,7 @@ export async function POST(request: NextRequest) {
 
     await admin
       .from('generations')
-      .update({ status: 'completed', thumbnail_urls: urls })
+      .update({ status: 'completed', thumbnail_urls: composedUrls })
       .eq('id', generationId);
 
     await admin
@@ -204,9 +240,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       id: generationId,
-      thumbnails: urls.map((url, i) => ({
+      thumbnails: composedUrls.map((url, i) => ({
         id: i + 1,
         url,
+        image_url: rawUrls[i],
         prompt:
           i < ALL_STYLES.length
             ? STYLE_DESCRIPTIONS[ALL_STYLES[i]]

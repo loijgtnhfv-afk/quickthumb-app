@@ -454,23 +454,19 @@ function extractKeyword(title: string): string {
 }
 
 /**
- * 5th composite: 2x2 grid of the raw background (no text) with ONE big
- * centered keyword overlaid. Avoids the "same caption × 4" feel of the
- * previous version that tiled fully-composed thumbnails.
+ * Build a 2x2 tile of 4 different raw backgrounds (640x360 each).
+ * Returned as a single 1280x720 PNG buffer. No text overlay.
  */
-export async function composeQuadGrid(
-  backgroundImageBuffer: Buffer,
-  title: string
-): Promise<Buffer> {
-  const fonts = await loadFonts();
-
-  // One raw background, no text. Resize once, reuse for all 4 quadrants.
-  const quadrant = await sharp(backgroundImageBuffer)
-    .resize(640, 360, { fit: 'cover', position: 'center' })
-    .png()
-    .toBuffer();
-
-  const gridBg = await sharp({
+export async function composeQuadGridRaw(bgBuffers: Buffer[]): Promise<Buffer> {
+  if (bgBuffers.length !== 4) {
+    throw new Error(`composeQuadGridRaw expects exactly 4 buffers, got ${bgBuffers.length}`);
+  }
+  const tiles = await Promise.all(
+    bgBuffers.map((buf) =>
+      sharp(buf).resize(640, 360, { fit: 'cover', position: 'center' }).png().toBuffer()
+    )
+  );
+  return await sharp({
     create: {
       width: 1280,
       height: 720,
@@ -479,14 +475,27 @@ export async function composeQuadGrid(
     },
   })
     .composite([
-      { input: quadrant, top: 0, left: 0 },
-      { input: quadrant, top: 0, left: 640 },
-      { input: quadrant, top: 360, left: 0 },
-      { input: quadrant, top: 360, left: 640 },
+      { input: tiles[0], top: 0, left: 0 },
+      { input: tiles[1], top: 0, left: 640 },
+      { input: tiles[2], top: 360, left: 0 },
+      { input: tiles[3], top: 360, left: 640 },
     ])
-    .png()
+    .png({ quality: 92, compressionLevel: 8 })
     .toBuffer();
+}
 
+/**
+ * 5th composite: 2x2 grid of 4 different raw backgrounds with ONE big
+ * centered keyword overlaid. The 4 tiles come from the 4 style-specific
+ * AI generations, so each quadrant shows a different scene.
+ */
+export async function composeQuadGrid(
+  bgBuffers: Buffer[],
+  title: string
+): Promise<Buffer> {
+  const fonts = await loadFonts();
+
+  const gridBg = await composeQuadGridRaw(bgBuffers);
   const bgDataUrl = `data:image/png;base64,${gridBg.toString('base64')}`;
 
   const keyword = extractKeyword(title);

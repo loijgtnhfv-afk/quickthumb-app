@@ -13,16 +13,17 @@ AI-powered YouTube thumbnail generator SaaS. Paste a YouTube URL, get 5 styled t
 
 ヒヅル (loijgtnhfv@gmail.com). Solo founder, Japanese-speaking. Communicates casually in Japanese. Visual-first feedback (sends screenshots). Cost-conscious. Prefers brief replies and concrete next steps over long explanations.
 
-## Architecture — "B option" (chosen for cost)
+## Architecture — "A option" (4 style-specific bgs, parallel)
 
 1. User pastes YouTube URL
 2. Fetch video title + description via YouTube Data API v3
-3. Replicate Flux Schnell generates **ONE** background image (text-free, $0.003)
-4. Satori composes 4 styled thumbnails by overlaying Japanese text on the shared background
-5. Sharp tiles the **raw text-free background** as a 2×2 grid, then Satori overlays ONE big centered keyword (5th option)
-6. All 5 PNGs uploaded to Supabase Storage, URLs returned to client
+3. Replicate Flux Schnell generates **4 different** style-specific backgrounds in parallel (one per style, each $0.003 → $0.012 total). Prompts are tuned per style: warm lifestyle (vlog), cool tech editorial (tech), dramatic action (gaming), minimalist magazine (editorial).
+4. Satori composes 4 styled thumbnails — each style overlays its Japanese text on **its own** AI background.
+5. The 5th is a "keyword spotlight": Sharp tiles the 4 different raw backgrounds as a 2×2 grid, then Satori overlays ONE big centered keyword.
+6. Each card also exposes the **raw image** (no overlay) for download — uploaded as `raw-{n}.png`. The 5th's raw is the same 2×2 tile minus the keyword.
+7. All composed + raw PNGs uploaded to Supabase Storage; URLs (both `url` and `image_url`) returned to client.
 
-**Cost per generation: $0.003** (only the one AI image — the 4+1 compositions are pure JS/Sharp).
+**Cost per generation: $0.012** (4 AI images — compositions and tile/quad are pure JS/Sharp). Generation runs the 4 Flux calls in parallel + parallel compose + parallel upload, so wall-clock stays ~15-30s.
 
 ## Tech Stack
 
@@ -126,10 +127,11 @@ Generation takes ~30-50s end-to-end. Route has `export const maxDuration = 60` t
 
 ## Decisions Already Made (don't re-litigate)
 
-- **B option** (1 AI image + 4 overlays) chosen over A option (4 separate AI images per style). Reasons: 4× cost, plus brand consistency.
+- **A option** chosen (4 separate AI images per style, parallel) over B option (1 shared bg). Cost moved from $0.003 → $0.012/gen, but each style now gets a visually appropriate scene. Replicate rate-limit OK above $5 balance.
+- **Per-card "Image only" download** alongside the styled "Download" — gives the user the raw text-free AI image for further editing.
+- **5th = keyword spotlight** with 4 different bgs tiled 2×2 + ONE central keyword (NOT the same caption ×4). User rejected the "tile composed thumbnails" version because it repeated the long title 4 times.
 - **Satori + Resvg** instead of Sharp's internal resvg (Sharp's renderer ignores @font-face base64 data URLs — invisible text).
 - **Free tier = 5 generations**, then 402 + upgrade prompt.
-- **No collage/effect elements in v1** — kept the 4 base styles simple. The 5th (2×2 grid) is the "all in one" option.
 - **AI generates only background** (text-free). Japanese title is added via Satori overlay because Flux can't render CJK reliably.
 
 ## Open Questions / Ideas Not Yet Decided
@@ -140,11 +142,11 @@ Generation takes ~30-50s end-to-end. Route has `export const maxDuration = 60` t
 
 ## Next Tasks (prioritized)
 
-1. **Test the 5th 2×2 grid** end-to-end on production (`07f5630` is current). Should appear as 5th option after the 4 styles.
-2. **Iterate the 4 base styles** based on user's feedback above.
-3. **Implement Stripe Pro plan** (subscription, webhook to update profiles.plan + generations_limit, customer portal).
-4. **Launch** — X, Reddit (r/SideProject, r/SaaS), Indie Hackers, possibly Product Hunt.
-5. **Improve background prompt** — current results sometimes too generic. Consider style-conditioned prompts per layout.
+1. **Tune the 4 style prompts** — see `buildStylePrompt()` in `app/api/generate/route.ts`. Now generates 4 different bgs in parallel; verify each style yields visually distinct results.
+2. **Iterate the 4 base styles (overlays)** based on user's feedback above (vlog/editorial weakest, gaming best, magazine-style replacement idea).
+3. **Persist raw URLs in DB** — `generations.thumbnail_urls` currently stores only composed URLs. Raw image URLs are only returned in the immediate API response; add a column if past-generation re-download is needed.
+4. **Implement Stripe Pro plan** (subscription, webhook to update profiles.plan + generations_limit, customer portal).
+5. **Launch** — X, Reddit (r/SideProject, r/SaaS), Indie Hackers, possibly Product Hunt.
 
 ## Workflow
 
