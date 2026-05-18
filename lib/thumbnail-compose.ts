@@ -65,7 +65,95 @@ async function loadFonts(): Promise<Fonts> {
   return fontsLoadingPromise;
 }
 
+// ---- Title cleaning / headline extraction ----------------------------------
+
+const YT_META_PARENS =
+  /[\(\[][^\)\]]*(?:Official|Music\s*Video|Audio|Remaster(?:ed)?|HD|4K|8K|Lyrics?|MV|PV|Live|Trailer|Teaser|Visualizer|Edit)[^\)\]]*[\)\]]/gi;
+const LAUGH_MARKERS = /\b(?:w{2,}|lol|lmao|haha+)\b|[笑草]{1,}/gi;
+
+/**
+ * Strip YouTube boilerplate and laughter markers from a title. Used for both
+ * the Flux prompt and the visible overlay text, so neither shows "(4K Remaster)".
+ */
+export function cleanTitle(title: string): string {
+  return title
+    .replace(YT_META_PARENS, '')
+    .replace(LAUGH_MARKERS, '')
+    .replace(/\s+/g, ' ')
+    .replace(/[　]+/g, '')
+    .trim();
+}
+
+const TITLE_DELIMITERS = /[|｜\-—–\/／:：「」『』\[\]【】()（）#＃]/;
+
+/**
+ * Extract a short, readable headline from a noisy YouTube title.
+ *
+ * - Drops YouTube metadata (Official Video / 4K Remaster / Lyrics etc.)
+ * - Drops laughter (www, lol, 笑, 草)
+ * - "Artist - Song" → prefers the Song side when it fits
+ * - Japanese clickbait with 【tag】『chunk』 → joins the first 2-3 chunks
+ * - Falls back to a word-boundary trim if still too long
+ *
+ * This is intentionally aggressive: thumbnails are unreadable when the full
+ * 60-char title is jammed in. Short and punchy beats accurate-but-cluttered.
+ */
+export function extractDisplayTitle(title: string, maxChars: number = 24): string {
+  const cleaned = cleanTitle(title);
+  if (!cleaned) return title.slice(0, maxChars);
+
+  const parts = cleaned
+    .split(TITLE_DELIMITERS)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+
+  // "Artist - Song" special case
+  if (parts.length === 2) {
+    const [a, b] = parts;
+    if (b.length <= maxChars && b.length >= 4) return b;
+    if (a.length <= maxChars && a.length >= 4) return a;
+  }
+
+  // No delimiters: just trim to a word/particle boundary
+  if (parts.length <= 1) {
+    return truncateAtBoundary(cleaned, maxChars);
+  }
+
+  // Accumulate parts up to maxChars
+  let result = parts[0];
+  for (let i = 1; i < parts.length; i++) {
+    const candidate = result + ' ' + parts[i];
+    if (candidate.length > maxChars) break;
+    result = candidate;
+  }
+  if (result.length > maxChars) {
+    result = truncateAtBoundary(result, maxChars);
+  }
+  return result;
+}
+
+function truncateAtBoundary(s: string, maxChars: number): string {
+  if (s.length <= maxChars) return s;
+  const cut = s.slice(0, maxChars);
+  // Prefer the latest space, ASCII punctuation, or Japanese particle
+  const candidates = [
+    cut.lastIndexOf(' '),
+    cut.lastIndexOf('・'),
+    cut.lastIndexOf(','),
+    cut.lastIndexOf('、'),
+  ];
+  const best = Math.max(...candidates);
+  if (best > maxChars * 0.5) return cut.slice(0, best).trim();
+  return cut.trim();
+}
+
 // ---- Title wrapping ---------------------------------------------------------
+
+// Characters we should NOT leave dangling at the end of a line (opening marks),
+// or NOT push to the start of a line (closing marks). For Satori we keep the
+// rules simple — Japanese kinsoku.
+const NO_START = '）)」』】]》。、,.…！？!?・';
+const NO_END = '（(「『【[《';
 
 function wrapTitle(title: string, targetCharsPerLine: number, maxLines: number): string[] {
   const lines: string[] = [];
@@ -76,11 +164,25 @@ function wrapTitle(title: string, targetCharsPerLine: number, maxLines: number):
       break;
     }
     let breakAt = targetCharsPerLine;
+
+    // Prefer to break at a space/punctuation near the target.
     const slice = remaining.slice(0, targetCharsPerLine + 4);
     const punctMatch = slice.match(/^.{0,}[\s、。!?!?,.…・]/u);
     if (punctMatch && punctMatch[0].length >= targetCharsPerLine - 2) {
       breakAt = punctMatch[0].length;
     }
+
+    // Don't break right BEFORE a "no-start" char (e.g., a closing bracket): pull
+    // it onto the previous line.
+    while (breakAt < remaining.length && NO_START.includes(remaining[breakAt])) {
+      breakAt++;
+    }
+    // Don't leave an opening bracket dangling at the end of a line: push it
+    // to the next line.
+    while (breakAt > 1 && NO_END.includes(remaining[breakAt - 1])) {
+      breakAt--;
+    }
+
     lines.push(remaining.slice(0, breakAt).trim());
     remaining = remaining.slice(breakAt).trim();
   }
@@ -188,8 +290,8 @@ function buildVlogElement(title: string, bgDataUrl: string): React.ReactElement 
 }
 
 function buildTechElement(title: string, bgDataUrl: string): React.ReactElement {
-  const lines = wrapTitle(title, 9, 3);
-  const fontSize = lines.length <= 2 ? 88 : 72;
+  const lines = wrapTitle(title, 11, 2);
+  const fontSize = lines.length === 1 ? 104 : 84;
 
   return h(
     'div',

@@ -5,6 +5,8 @@ import {
   composeThumbnail,
   composeQuadGrid,
   composeQuadGridRaw,
+  cleanTitle,
+  extractDisplayTitle,
   ALL_STYLES,
   STYLE_DESCRIPTIONS,
   QUAD_GRID_DESCRIPTION,
@@ -48,22 +50,10 @@ async function fetchVideoMetadata(videoId: string) {
 }
 
 const NEGATIVE_PROMPT =
-  'NO text, NO letters, NO words, NO captions, NO logos, NO writing of any kind anywhere in the image';
-
-// Strip YouTube boilerplate like "(Official Video)", "[4K Remaster]" so the
-// prompt focuses on the actual topic/artist/subject, not video metadata noise.
-function cleanTitleForPrompt(title: string): string {
-  return title
-    .replace(
-      /[\(\[][^\)\]]*(?:Official|Music\s*Video|Audio|Remaster(?:ed)?|HD|4K|8K|Lyrics?|MV|PV|Live|Trailer|Teaser|Visualizer|Edit)[^\)\]]*[\)\]]/gi,
-      ''
-    )
-    .replace(/\s+/g, ' ')
-    .trim();
-}
+  'NO text, NO letters, NO words, NO captions, NO logos, NO writing, NO glyphs, NO numbers, NO signs, NO screens or monitors displaying any characters, NO fake inscriptions, NO subtitles';
 
 function buildStylePrompt(title: string, style: ThumbnailStyle): string {
-  const cleaned = cleanTitleForPrompt(title);
+  const cleaned = cleanTitle(title);
   const safeTitle = cleaned.replace(/["]/g, '').slice(0, 120);
   const tail = `${NEGATIVE_PROMPT}. 16:9 aspect ratio, high quality, photorealistic.`;
   // Topic-first: the SUBJECT must be visible and tied to the title; style is
@@ -74,7 +64,8 @@ function buildStylePrompt(title: string, style: ThumbnailStyle): string {
     case 'vlog':
       return `${topic} Shot as warm intimate lifestyle photography: soft golden-hour daylight, shallow depth of field, cream and peach palette, slightly blurred background, cozy personal vlog aesthetic. The subject is prominent and recognizable. ${tail}`;
     case 'tech':
-      return `${topic} Shot as a sleek modern editorial product photo: crisp directional studio lighting, cool palette with cyan and deep navy accents, clean composition, premium magazine feel. The hero subject is clearly the topic itself — NOT a generic desk or gadget setup. Subject biased right, left side slightly darker for overlay text. ${tail}`;
+      // Avoid screens/monitors — Flux loves to scribble fake glyphs on them.
+      return `${topic} Shot as a sleek modern editorial portrait or hero-object photograph: crisp directional studio lighting, cool palette with cyan and deep navy accents, clean composition, premium magazine feel. The hero subject is a person or central object related to the topic — NOT a computer, NOT a monitor, NOT a desk setup, NOT a phone screen. Subject biased right, left side slightly darker for overlay text. ${tail}`;
     case 'gaming':
       return `${topic} Shot as a cinematic high-energy moment: dramatic dark lighting with vibrant red and neon accents, deep blacks, strong rim light, intense atmosphere, hero shot of the topic subject. Bold action vibe with comic-book energy. ${tail}`;
     case 'editorial':
@@ -161,6 +152,9 @@ export async function POST(request: NextRequest) {
 
     const meta = await fetchVideoMetadata(videoId);
     const stylePrompts = ALL_STYLES.map((s) => buildStylePrompt(meta.title, s));
+    // Shorter, cleaner headline for the visible overlay (strips
+    // "(4K Remaster)", "www", etc. and limits to a punchy ~24 chars).
+    const displayTitle = extractDisplayTitle(meta.title, 24);
 
     const admin = createServiceClient();
     const { data: insertRow, error: insertError } = await admin
@@ -198,14 +192,14 @@ export async function POST(request: NextRequest) {
       // 2) Compose 4 styled thumbnails, each using its own background.
       const composedBuffers = await Promise.all(
         ALL_STYLES.map((style, i) =>
-          composeThumbnail(bgBuffers[i], meta.title, style)
+          composeThumbnail(bgBuffers[i], displayTitle, style)
         )
       );
 
       // 3) 5th composite: 4 different bgs tiled 2x2 + central keyword.
       // 5th raw: same tile, no keyword.
       const [quadBuffer, quadRawBuffer] = await Promise.all([
-        composeQuadGrid(bgBuffers, meta.title),
+        composeQuadGrid(bgBuffers, displayTitle),
         composeQuadGridRaw(bgBuffers),
       ]);
 
