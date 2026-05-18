@@ -441,23 +441,36 @@ export const ALL_STYLES: ThumbnailStyle[] = ['vlog', 'tech', 'gaming', 'editoria
 
 // ---- Quad grid (5th composite) ---------------------------------------------
 
+function extractKeyword(title: string): string {
+  // Split on common delimiters; keep the first meaningful chunk.
+  const delimiters = /[|｜\-—–\/／:：「」『』\[\]【】()（）#＃]/;
+  const parts = title
+    .split(delimiters)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+  let kw = (parts[0] || title).trim();
+  if (kw.length > 16) kw = kw.slice(0, 16);
+  return kw;
+}
+
 /**
- * Combine 4 thumbnails (1280x720 each) into a single 2x2 grid (1280x720 total,
- * each quadrant 640x360). Useful as a "preview-all" option that lets the user
- * see every style at a glance.
+ * 5th composite: 2x2 grid of the raw background (no text) with ONE big
+ * centered keyword overlaid. Avoids the "same caption × 4" feel of the
+ * previous version that tiled fully-composed thumbnails.
  */
-export async function composeQuadGrid(thumbnails: Buffer[]): Promise<Buffer> {
-  if (thumbnails.length !== 4) {
-    throw new Error(`composeQuadGrid expects exactly 4 thumbnails, got ${thumbnails.length}`);
-  }
+export async function composeQuadGrid(
+  backgroundImageBuffer: Buffer,
+  title: string
+): Promise<Buffer> {
+  const fonts = await loadFonts();
 
-  const resized = await Promise.all(
-    thumbnails.map((buf) =>
-      sharp(buf).resize(640, 360, { fit: 'cover', position: 'center' }).png().toBuffer()
-    )
-  );
+  // One raw background, no text. Resize once, reuse for all 4 quadrants.
+  const quadrant = await sharp(backgroundImageBuffer)
+    .resize(640, 360, { fit: 'cover', position: 'center' })
+    .png()
+    .toBuffer();
 
-  return await sharp({
+  const gridBg = await sharp({
     create: {
       width: 1280,
       height: 720,
@@ -466,14 +479,106 @@ export async function composeQuadGrid(thumbnails: Buffer[]): Promise<Buffer> {
     },
   })
     .composite([
-      { input: resized[0], top: 0, left: 0 },
-      { input: resized[1], top: 0, left: 640 },
-      { input: resized[2], top: 360, left: 0 },
-      { input: resized[3], top: 360, left: 640 },
+      { input: quadrant, top: 0, left: 0 },
+      { input: quadrant, top: 0, left: 640 },
+      { input: quadrant, top: 360, left: 0 },
+      { input: quadrant, top: 360, left: 640 },
     ])
-    .png({ quality: 92, compressionLevel: 8 })
+    .png()
     .toBuffer();
+
+  const bgDataUrl = `data:image/png;base64,${gridBg.toString('base64')}`;
+
+  const keyword = extractKeyword(title);
+  const lines = wrapTitle(keyword, 8, 2);
+  const fontSize = lines.length === 1 ? 156 : 112;
+
+  const element = h(
+    'div',
+    {
+      style: {
+        display: 'flex',
+        width: '100%',
+        height: '100%',
+        position: 'relative',
+      },
+    },
+    h('img', {
+      src: bgDataUrl,
+      style: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        objectFit: 'cover',
+      },
+    }),
+    h('div', {
+      style: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        background:
+          'radial-gradient(ellipse at center, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.15) 70%)',
+      },
+    }),
+    h(
+      'div',
+      {
+        style: {
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+      },
+      h(
+        'div',
+        {
+          style: {
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontFamily: 'JpSansBlack',
+            fontWeight: 900,
+            fontSize,
+            color: 'white',
+            textAlign: 'center',
+            lineHeight: 1.1,
+            padding: '0 60px',
+            textShadow:
+              '0 0 24px rgba(0,0,0,0.95), 6px 6px 0 #000, -6px -6px 0 #000, 6px -6px 0 #000, -6px 6px 0 #000, 6px 0 0 #000, -6px 0 0 #000, 0 6px 0 #000, 0 -6px 0 #000',
+          },
+        },
+        ...lines.map((line, i) =>
+          h('div', { key: i, style: { display: 'flex' } }, line)
+        )
+      )
+    )
+  );
+
+  const svg = await satori(element, {
+    width: 1280,
+    height: 720,
+    fonts: [
+      { name: 'JpSansBlack', data: fonts.sansBlack, weight: 900, style: 'normal' },
+      { name: 'JpSansBold', data: fonts.sansBold, weight: 700, style: 'normal' },
+      { name: 'JpSerifBold', data: fonts.serifBold, weight: 700, style: 'normal' },
+    ],
+  });
+
+  const resvg = new Resvg(svg, { fitTo: { mode: 'width', value: 1280 } });
+  return Buffer.from(resvg.render().asPng());
 }
 
 export const QUAD_GRID_DESCRIPTION =
-  'All 4 styles in one — 2×2 grid preview for choosing your favorite';
+  'Keyword spotlight — raw scene ×4 with one bold centered keyword';
+

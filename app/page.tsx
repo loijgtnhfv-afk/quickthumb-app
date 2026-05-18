@@ -152,7 +152,7 @@ export default function Home() {
         padding: '32px 20px 48px',
       }}
     >
-      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+      <div style={{ maxWidth: 1500, margin: '0 auto' }}>
         {/* Header */}
         <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
           <a href="/" style={{ color: '#fff', textDecoration: 'none', fontSize: 18, fontWeight: 700 }}>
@@ -239,7 +239,7 @@ export default function Home() {
             YouTube thumbnails<br />in 60 seconds.
           </h1>
           <p style={{ fontSize: 18, opacity: 0.75, maxWidth: 600, margin: '20px auto 0' }}>
-            Paste any YouTube URL. Get 4 AI-generated thumbnail options instantly.
+            Paste any YouTube URL. Get 5 AI-generated thumbnail options instantly.
             5 free · No credit card.
           </p>
         </div>
@@ -324,8 +324,8 @@ export default function Home() {
         </form>
 
         {status === 'loading' && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 20 }}>
-            {[0, 1, 2, 3].map((i) => (
+          <div className="thumb-row">
+            {[0, 1, 2, 3, 4].map((i) => (
               <div
                 key={i}
                 style={{
@@ -353,7 +353,7 @@ export default function Home() {
                 gap: 12,
               }}
             >
-              <h2 style={{ fontSize: 22, margin: 0, fontWeight: 700 }}>4 thumbnails ready</h2>
+              <h2 style={{ fontSize: 22, margin: 0, fontWeight: 700 }}>5 thumbnails ready</h2>
               <button
                 onClick={handleReset}
                 style={{
@@ -369,7 +369,7 @@ export default function Home() {
                 Generate again
               </button>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 20 }}>
+            <div className="thumb-row">
               {results.map((thumb) => (
                 <div
                   key={thumb.id}
@@ -378,6 +378,7 @@ export default function Home() {
                     border: '1px solid rgba(255,255,255,0.12)',
                     borderRadius: 12,
                     overflow: 'hidden',
+                    minWidth: 0,
                   }}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -427,6 +428,22 @@ export default function Home() {
         }
         input::placeholder { color: rgba(255,255,255,0.4); }
         button:not(:disabled):hover { transform: translateY(-1px); }
+        .thumb-row {
+          display: grid;
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+          gap: 14px;
+        }
+        @media (max-width: 900px) {
+          .thumb-row {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 16px;
+          }
+        }
+        @media (max-width: 520px) {
+          .thumb-row {
+            grid-template-columns: 1fr;
+          }
+        }
       `}</style>
     </main>
   );

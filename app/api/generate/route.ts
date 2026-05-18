@@ -162,17 +162,15 @@ export async function POST(request: NextRequest) {
 
       // 2) Compose 4 styled thumbnails using overlay text.
       urls = [];
-      const composedBuffers: Buffer[] = [];
       for (let i = 0; i < ALL_STYLES.length; i++) {
         const style = ALL_STYLES[i];
         const composed = await composeThumbnail(bgBuffer, meta.title, style);
-        composedBuffers.push(composed);
         const url = await uploadThumbnail(composed, user.id, generationId, i + 1);
         urls.push(url);
       }
 
-      // 3) Compose 5th option: 2x2 grid of all 4 styles in one image.
-      const quadBuffer = await composeQuadGrid(composedBuffers);
+      // 3) Compose 5th option: raw bg tiled 2x2 with one centered keyword.
+      const quadBuffer = await composeQuadGrid(bgBuffer, meta.title);
       const quadUrl = await uploadThumbnail(quadBuffer, user.id, generationId, 5);
       urls.push(quadUrl);
     } catch (genError) {

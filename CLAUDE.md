@@ -19,7 +19,7 @@ AI-powered YouTube thumbnail generator SaaS. Paste a YouTube URL, get 5 styled t
 2. Fetch video title + description via YouTube Data API v3
 3. Replicate Flux Schnell generates **ONE** background image (text-free, $0.003)
 4. Satori composes 4 styled thumbnails by overlaying Japanese text on the shared background
-5. Sharp composites a 5th 2×2 grid combining all 4 styles
+5. Sharp tiles the **raw text-free background** as a 2×2 grid, then Satori overlays ONE big centered keyword (5th option)
 6. All 5 PNGs uploaded to Supabase Storage, URLs returned to client
 
 **Cost per generation: $0.003** (only the one AI image — the 4+1 compositions are pure JS/Sharp).
@@ -67,12 +67,12 @@ RLS is set up. Anon key can read own profile / generations / usage_logs only.
 ## Env Vars (already in Vercel)
 
 - `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY` (server-only, used in API route to bypass RLS for inserts/uploads)
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `SUPABASE_SECRET_KEY` (server-only, used in API route to bypass RLS for inserts/uploads)
 - `REPLICATE_API_TOKEN`
 - `YOUTUBE_API_KEY`
 
-To run locally, copy these from Vercel project settings → Environment Variables into `.env.local`.
+To run locally: `vercel env pull .env.local --environment=production --yes` (after `vercel link`). Or copy manually from Vercel project settings → Environment Variables.
 
 ## Style Definitions
 
@@ -83,7 +83,7 @@ The 4 base styles (in `lib/thumbnail-compose.ts`):
 3. **gaming** — Bottom huge impact title, skewed -6°, red shadow. Action vibe.
 4. **editorial** — Bottom translucent dark bar with subtle serif. Calm/magazine vibe.
 
-5th (auto-generated): **2×2 grid** of all 4 above at 640×360 each = 1280×720 total.
+5th (auto-generated): **Keyword spotlight** — the raw text-free background tiled 2×2 (640×360 each) with ONE big keyword centered on top (extracted from the title via `extractKeyword()` in `lib/thumbnail-compose.ts`). White heavy sans on a radial vignette.
 
 User feedback as of 2026-05-18: vlog and editorial feel weakest, gaming is best. Ideas floated: replace editorial with proper magazine style, make gaming more comical, add a simple template style for post-editing. Not implemented yet.
 
