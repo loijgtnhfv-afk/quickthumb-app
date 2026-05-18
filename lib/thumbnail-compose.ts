@@ -154,10 +154,51 @@ function truncateAtBoundary(s: string, maxChars: number): string {
 // rules simple — Japanese kinsoku.
 const NO_START = '）)」』】]》。、,.…！？!?・';
 const NO_END = '（(「『【[《';
+const BREAK_CHARS = ' 　、。!?!?,.…・';
+
+// For 2-line wraps, find the break index closest to the middle of the string
+// — produces balanced lines like ["alone in NEW", "YORK CITY"] instead of
+// ["alone in NEW YORK", "CITY"]. Returns null if no safe break exists.
+function findBalancedSplit(s: string): [string, string] | null {
+  const mid = s.length / 2;
+  let bestIdx = -1;
+  let bestDist = Infinity;
+
+  for (let i = 1; i < s.length; i++) {
+    if (!BREAK_CHARS.includes(s[i - 1])) continue;
+    if (NO_START.includes(s[i])) continue;
+    if (NO_END.includes(s[i - 1])) continue;
+    const dist = Math.abs(i - mid);
+    // <= so later (rightward) ties win, giving the second line a fair share.
+    if (dist <= bestDist) {
+      bestDist = dist;
+      bestIdx = i;
+    }
+  }
+  if (bestIdx < 0) return null;
+  const left = s.slice(0, bestIdx).trim();
+  const right = s.slice(bestIdx).trim();
+  if (!left || !right) return null;
+  return [left, right];
+}
 
 function wrapTitle(title: string, targetCharsPerLine: number, maxLines: number): string[] {
+  const trimmed = title.trim();
+
+  // For 2-line wraps where the title fits comfortably in two lines, prefer a
+  // balanced split over the original greedy left-to-right break. Avoids
+  // "alone in NEW YORK / CITY" with just one word on line 2.
+  if (
+    maxLines === 2 &&
+    trimmed.length > targetCharsPerLine * 1.25 &&
+    trimmed.length <= targetCharsPerLine * 2.4
+  ) {
+    const balanced = findBalancedSplit(trimmed);
+    if (balanced) return balanced;
+  }
+
   const lines: string[] = [];
-  let remaining = title.trim();
+  let remaining = trimmed;
   while (remaining.length > 0 && lines.length < maxLines) {
     if (remaining.length <= targetCharsPerLine || lines.length === maxLines - 1) {
       lines.push(remaining);
@@ -197,7 +238,7 @@ export const STYLE_DESCRIPTIONS: Record<ThumbnailStyle, string> = {
   vlog: 'Lifestyle / Vlog style — center serif title with sub-tag bars',
   tech: 'Tech / How-to style — left text, right subject',
   gaming: 'Gaming / Impact style — huge bottom title with red shadow',
-  editorial: 'Editorial / Calm style — subtle serif title on lower bar',
+  editorial: 'Anime / Illustration — cel-shaded manga aesthetic, title bar at bottom',
 };
 
 const h = React.createElement;
@@ -544,14 +585,16 @@ export const ALL_STYLES: ThumbnailStyle[] = ['vlog', 'tech', 'gaming', 'editoria
 // ---- Quad grid (5th composite) ---------------------------------------------
 
 function extractKeyword(title: string): string {
-  // Split on common delimiters; keep the first meaningful chunk.
-  const delimiters = /[|｜\-—–\/／:：「」『』\[\]【】()（）#＃]/;
-  const parts = title
-    .split(delimiters)
+  // First clean YouTube metadata and laughter markers from the title.
+  const cleaned = cleanTitle(title);
+  const parts = cleaned
+    .split(TITLE_DELIMITERS)
     .map((p) => p.trim())
     .filter((p) => p.length > 0);
-  let kw = (parts[0] || title).trim();
-  if (kw.length > 16) kw = kw.slice(0, 16);
+  let kw = (parts[0] || cleaned).trim();
+  // Truncate at a word boundary, NEVER mid-letter. Cap at 20 so phrases
+  // like "alone in NEW YORK" survive instead of cutting to "alone in NEW YOR".
+  if (kw.length > 20) kw = truncateAtBoundary(kw, 20);
   return kw;
 }
 

@@ -52,24 +52,51 @@ async function fetchVideoMetadata(videoId: string) {
 const NEGATIVE_PROMPT =
   'NO text, NO letters, NO words, NO captions, NO logos, NO writing, NO glyphs, NO numbers, NO signs, NO screens or monitors displaying any characters, NO fake inscriptions, NO subtitles';
 
-function buildStylePrompt(title: string, style: ThumbnailStyle): string {
-  const cleaned = cleanTitle(title);
-  const safeTitle = cleaned.replace(/["]/g, '').slice(0, 120);
-  const tail = `${NEGATIVE_PROMPT}. 16:9 aspect ratio, high quality, photorealistic.`;
-  // Topic-first: the SUBJECT must be visible and tied to the title; style is
-  // only the lighting/mood lens, never an excuse to render an empty frame.
-  const topic = `A photographic scene visibly tied to "${safeTitle}", with a clear hero subject related to the topic.`;
+// Strip URLs, hashtags, "subscribe" boilerplate so a short context snippet of
+// the description can be safely fed to Flux without crowding the prompt.
+function summarizeDescription(description: string, maxChars: number = 200): string {
+  if (!description) return '';
+  return description
+    .replace(/https?:\/\/\S+/g, '')
+    .replace(/[#＃][^\s#＃]+/g, '')
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxChars)
+    .trim();
+}
+
+function buildStylePrompt(
+  title: string,
+  description: string,
+  channel: string,
+  style: ThumbnailStyle
+): string {
+  const cleanedTitle = cleanTitle(title);
+  const safeTitle = cleanedTitle.replace(/["]/g, '').slice(0, 120);
+  const safeChannel = channel.replace(/["]/g, '').slice(0, 60);
+  const ctx = summarizeDescription(description, 200);
+  const channelPart = safeChannel ? ` from a YouTube video by "${safeChannel}"` : '';
+  const ctxPart = ctx ? ` Context from the video description: ${ctx}.` : '';
+  const tail = `${NEGATIVE_PROMPT}. 16:9 aspect ratio.`;
+
+  // Photo-style topic prefix shared by the 3 photographic styles.
+  const photoTopic = `A photographic scene visibly tied to the topic of "${safeTitle}"${channelPart}, with a clear hero subject related to the topic.${ctxPart} High quality, photorealistic.`;
+
+  // Anime-style topic prefix for the illustration style.
+  const animeTopic = `A high-quality contemporary anime / manga illustration of a scene visibly tied to the topic of "${safeTitle}"${channelPart}, with a clear hero subject related to the topic.${ctxPart}`;
 
   switch (style) {
     case 'vlog':
-      return `${topic} Shot as warm intimate lifestyle photography: soft golden-hour daylight, shallow depth of field, cream and peach palette, slightly blurred background, cozy personal vlog aesthetic. The subject is prominent and recognizable. ${tail}`;
+      return `${photoTopic} Shot as warm intimate lifestyle photography: soft golden-hour daylight, shallow depth of field, cream and peach palette, slightly blurred background, cozy personal vlog aesthetic. The subject is prominent and recognizable. ${tail}`;
     case 'tech':
       // Avoid screens/monitors — Flux loves to scribble fake glyphs on them.
-      return `${topic} Shot as a sleek modern editorial portrait or hero-object photograph: crisp directional studio lighting, cool palette with cyan and deep navy accents, clean composition, premium magazine feel. The hero subject is a person or central object related to the topic — NOT a computer, NOT a monitor, NOT a desk setup, NOT a phone screen. Subject biased right, left side slightly darker for overlay text. ${tail}`;
+      return `${photoTopic} Shot as a sleek modern editorial portrait or hero-object photograph: crisp directional studio lighting, cool palette with cyan and deep navy accents, clean composition, premium magazine feel. The hero subject is a person or central object related to the topic — NOT a computer, NOT a monitor, NOT a desk setup, NOT a phone screen. Subject biased right, left side slightly darker for overlay text. ${tail}`;
     case 'gaming':
-      return `${topic} Shot as a cinematic high-energy moment: dramatic dark lighting with vibrant red and neon accents, deep blacks, strong rim light, intense atmosphere, hero shot of the topic subject. Bold action vibe with comic-book energy. ${tail}`;
+      return `${photoTopic} Shot as a cinematic high-energy moment: dramatic dark lighting with vibrant red and neon accents, deep blacks, strong rim light, intense atmosphere, hero shot of the topic subject. Bold action vibe with comic-book energy. ${tail}`;
     case 'editorial':
-      return `${topic} Shot as a refined editorial magazine spread: muted sophisticated palette (warm beige, soft gray, off-white), a clear and prominent hero subject related to the topic occupying most of the frame, soft cinematic lighting, magazine-quality composition. NOT empty, NOT abstract, NOT minimalist-to-the-point-of-blank — the subject is large, identifiable, and well-lit. ${tail}`;
+      // Anime/manga illustration aesthetic — the only NON-photorealistic style.
+      return `${animeTopic} Rendered as a polished cel-shaded anime illustration: clean vector-style lineart, vibrant but tasteful colors, dramatic composition, contemporary Japanese magazine-cover aesthetic. The hero subject is clearly drawn and prominent in the frame. Hand-drawn anime artwork, NOT a photograph. ${tail}`;
   }
 }
 
@@ -151,7 +178,9 @@ export async function POST(request: NextRequest) {
     }
 
     const meta = await fetchVideoMetadata(videoId);
-    const stylePrompts = ALL_STYLES.map((s) => buildStylePrompt(meta.title, s));
+    const stylePrompts = ALL_STYLES.map((s) =>
+      buildStylePrompt(meta.title, meta.description, meta.channelTitle, s)
+    );
     // Shorter, cleaner headline for the visible overlay (strips
     // "(4K Remaster)", "www", etc. and limits to a punchy ~24 chars).
     const displayTitle = extractDisplayTitle(meta.title, 24);
