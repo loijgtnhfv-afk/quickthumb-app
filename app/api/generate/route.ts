@@ -50,20 +50,35 @@ async function fetchVideoMetadata(videoId: string) {
 const NEGATIVE_PROMPT =
   'NO text, NO letters, NO words, NO captions, NO logos, NO writing of any kind anywhere in the image';
 
+// Strip YouTube boilerplate like "(Official Video)", "[4K Remaster]" so the
+// prompt focuses on the actual topic/artist/subject, not video metadata noise.
+function cleanTitleForPrompt(title: string): string {
+  return title
+    .replace(
+      /[\(\[][^\)\]]*(?:Official|Music\s*Video|Audio|Remaster(?:ed)?|HD|4K|8K|Lyrics?|MV|PV|Live|Trailer|Teaser|Visualizer|Edit)[^\)\]]*[\)\]]/gi,
+      ''
+    )
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function buildStylePrompt(title: string, style: ThumbnailStyle): string {
-  const safeTitle = title.replace(/["]/g, '').slice(0, 120);
-  const tail = `${NEGATIVE_PROMPT}. 16:9 aspect ratio, high quality, professional photography.`;
-  const topic = `inspired by the topic of "${safeTitle}"`;
+  const cleaned = cleanTitleForPrompt(title);
+  const safeTitle = cleaned.replace(/["]/g, '').slice(0, 120);
+  const tail = `${NEGATIVE_PROMPT}. 16:9 aspect ratio, high quality, photorealistic.`;
+  // Topic-first: the SUBJECT must be visible and tied to the title; style is
+  // only the lighting/mood lens, never an excuse to render an empty frame.
+  const topic = `A photographic scene visibly tied to "${safeTitle}", with a clear hero subject related to the topic.`;
 
   switch (style) {
     case 'vlog':
-      return `Warm lifestyle photography ${topic}. Soft natural daylight, golden-hour cream/peach palette, shallow depth of field, cozy intimate vibe, slightly blurred background. Personal vlog aesthetic. Negative space at top and bottom for overlay text. ${tail}`;
+      return `${topic} Shot as warm intimate lifestyle photography: soft golden-hour daylight, shallow depth of field, cream and peach palette, slightly blurred background, cozy personal vlog aesthetic. The subject is prominent and recognizable. ${tail}`;
     case 'tech':
-      return `Sleek modern tech editorial product photography ${topic}. Crisp studio lighting, cool tones with cyan and deep navy accents, clean lines, premium gadget/desk-setup feel. Subject biased to the right; left side darker for overlay text. ${tail}`;
+      return `${topic} Shot as a sleek modern editorial product photo: crisp directional studio lighting, cool palette with cyan and deep navy accents, clean composition, premium magazine feel. The hero subject is clearly the topic itself — NOT a generic desk or gadget setup. Subject biased right, left side slightly darker for overlay text. ${tail}`;
     case 'gaming':
-      return `Cinematic high-energy action scene ${topic}. Dramatic dark lighting with vibrant red and neon accents, deep blacks, saturated highlights, strong rim light, intense atmosphere. Hero subject centered with the bottom area darker for overlay text. Comic-book style energy. ${tail}`;
+      return `${topic} Shot as a cinematic high-energy moment: dramatic dark lighting with vibrant red and neon accents, deep blacks, strong rim light, intense atmosphere, hero shot of the topic subject. Bold action vibe with comic-book energy. ${tail}`;
     case 'editorial':
-      return `Minimalist editorial magazine photography ${topic}. Refined composition, muted neutral palette (off-white, soft gray, warm beige), generous negative space, sophisticated calm mood, high-end print-magazine aesthetic. Subject in the upper half; lower third clean for overlay text. ${tail}`;
+      return `${topic} Shot as a refined editorial magazine spread: muted sophisticated palette (warm beige, soft gray, off-white), a clear and prominent hero subject related to the topic occupying most of the frame, soft cinematic lighting, magazine-quality composition. NOT empty, NOT abstract, NOT minimalist-to-the-point-of-blank — the subject is large, identifiable, and well-lit. ${tail}`;
   }
 }
 
