@@ -45,6 +45,8 @@ export default function Home() {
   const [results, setResults] = useState<Thumbnail[]>([]);
   const [channelPreview, setChannelPreview] = useState<ChannelPreview | null>(null);
   const [useFace, setUseFace] = useState(false);
+  const [avatarKind, setAvatarKind] = useState<'face' | 'logo'>('face');
+  const [customText, setCustomText] = useState('');
 
   useEffect(() => {
     let mounted = true;
@@ -144,6 +146,8 @@ export default function Home() {
         body: JSON.stringify({
           youtube_url: url,
           use_face: useFace && !!channelPreview?.avatar_url,
+          avatar_kind: avatarKind,
+          custom_text: customText.trim(),
         }),
       });
       const data = await res.json();
@@ -187,6 +191,8 @@ export default function Home() {
     setError('');
     setChannelPreview(null);
     setUseFace(false);
+    setAvatarKind('face');
+    setCustomText('');
   };
 
   const remaining = profile ? Math.max(0, profile.generations_limit - profile.generations_used) : null;
@@ -369,55 +375,137 @@ export default function Home() {
           )}
 
           {channelPreview && channelPreview.avatar_url && (
-            <label
+            <div
               style={{
                 marginTop: 14,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
                 padding: '10px 14px',
                 background: 'rgba(255,255,255,0.05)',
                 border: useFace
                   ? '1px solid rgba(167,139,250,0.6)'
                   : '1px solid rgba(255,255,255,0.15)',
                 borderRadius: 10,
-                cursor: 'pointer',
                 transition: 'border-color 0.15s ease, background 0.15s ease',
               }}
             >
-              <input
-                type="checkbox"
-                checked={useFace}
-                onChange={(e) => setUseFace(e.target.checked)}
+              <label
                 style={{
-                  width: 18,
-                  height: 18,
-                  accentColor: '#a78bfa',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
                   cursor: 'pointer',
                 }}
-              />
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={channelPreview.avatar_url}
-                alt={channelPreview.channel_title}
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: '50%',
-                  objectFit: 'cover',
-                  border: '1px solid rgba(255,255,255,0.2)',
-                }}
-              />
-              <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
-                <span style={{ fontSize: 14, fontWeight: 600 }}>
-                  {channelPreview.channel_title}の顔を入れる
-                </span>
-                <span style={{ fontSize: 12, opacity: 0.6 }}>
-                  チャンネルのプロフィール画像を各サムネに合成します。顔じゃない場合はオフ推奨。
-                </span>
-              </div>
-            </label>
+              >
+                <input
+                  type="checkbox"
+                  checked={useFace}
+                  onChange={(e) => setUseFace(e.target.checked)}
+                  style={{
+                    width: 18,
+                    height: 18,
+                    accentColor: '#a78bfa',
+                    cursor: 'pointer',
+                  }}
+                />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={channelPreview.avatar_url}
+                  alt={channelPreview.channel_title}
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: '50%',
+                    objectFit: 'cover',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                  }}
+                />
+                <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+                  <span style={{ fontSize: 14, fontWeight: 600 }}>
+                    {channelPreview.channel_title}のアイコンを入れる
+                  </span>
+                  <span style={{ fontSize: 12, opacity: 0.6 }}>
+                    チャンネルのプロフィール画像を各サムネに合成します。
+                  </span>
+                </div>
+              </label>
+
+              {useFace && (
+                <div
+                  style={{
+                    marginTop: 12,
+                    paddingTop: 10,
+                    borderTop: '1px solid rgba(255,255,255,0.08)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <span style={{ fontSize: 13, opacity: 0.75 }}>表示方法:</span>
+                  {(['face', 'logo'] as const).map((kind) => {
+                    const active = avatarKind === kind;
+                    return (
+                      <button
+                        key={kind}
+                        type="button"
+                        onClick={() => setAvatarKind(kind)}
+                        style={{
+                          padding: '6px 14px',
+                          fontSize: 13,
+                          fontWeight: 600,
+                          color: active ? '#0f0c29' : '#fff',
+                          background: active
+                            ? 'linear-gradient(135deg, #a78bfa 0%, #f0abfc 100%)'
+                            : 'rgba(255,255,255,0.08)',
+                          border: active
+                            ? '1px solid transparent'
+                            : '1px solid rgba(255,255,255,0.18)',
+                          borderRadius: 999,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {kind === 'face' ? '顔（インパクト大）' : 'ロゴ（切らずに表示）'}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           )}
+
+          <div style={{ marginTop: 14 }}>
+            <label
+              htmlFor="custom-text"
+              style={{
+                display: 'block',
+                fontSize: 13,
+                opacity: 0.7,
+                marginBottom: 6,
+                fontWeight: 500,
+              }}
+            >
+              字幕（任意）<span style={{ opacity: 0.5, fontWeight: 400 }}> · 空欄ならタイトルから自動生成</span>
+            </label>
+            <input
+              id="custom-text"
+              type="text"
+              value={customText}
+              onChange={(e) => setCustomText(e.target.value)}
+              maxLength={60}
+              placeholder="例: 月収100万になった理由"
+              disabled={status === 'loading'}
+              style={{
+                width: '100%',
+                padding: '10px 14px',
+                fontSize: 14,
+                background: 'rgba(0,0,0,0.3)',
+                border: '1px solid rgba(255,255,255,0.12)',
+                borderRadius: 10,
+                color: '#fff',
+                outline: 'none',
+                boxSizing: 'border-box',
+              }}
+            />
+          </div>
 
           <p style={{ fontSize: 13, opacity: 0.55, marginTop: 14, marginBottom: 0 }}>
             Works with youtube.com/watch, youtu.be, and Shorts links.

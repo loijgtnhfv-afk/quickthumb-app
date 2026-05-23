@@ -12,6 +12,7 @@ import {
   STYLE_DESCRIPTIONS,
   QUAD_GRID_DESCRIPTION,
   type ThumbnailStyle,
+  type AvatarKind,
 } from '@/lib/thumbnail-compose';
 import {
   extractVideoId,
@@ -124,6 +125,12 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const youtubeUrl = typeof body.youtube_url === 'string' ? body.youtube_url.trim() : '';
     const useFace = body.use_face === true;
+    const avatarKind: AvatarKind = body.avatar_kind === 'logo' ? 'logo' : 'face';
+    const customTextRaw =
+      typeof body.custom_text === 'string' ? body.custom_text.trim() : '';
+    // Cap user-supplied overlay text — composers wrap to 2 lines and large
+    // strings break the layout.
+    const customText = customTextRaw.slice(0, 60);
     if (!youtubeUrl) {
       return NextResponse.json({ error: 'youtube_url is required' }, { status: 400 });
     }
@@ -158,7 +165,10 @@ export async function POST(request: NextRequest) {
     );
     // Shorter, cleaner headline for the visible overlay (strips
     // "(4K Remaster)", "www", etc. and limits to a punchy ~24 chars).
-    const displayTitle = extractDisplayTitle(meta.title, 24);
+    // If the user typed a custom overlay, that wins over the auto-extracted one.
+    const displayTitle = customText
+      ? customText
+      : extractDisplayTitle(meta.title, 24);
 
     const admin = createServiceClient();
     const { data: insertRow, error: insertError } = await admin
@@ -215,7 +225,7 @@ export async function POST(request: NextRequest) {
           const composed = await composeThumbnail(bgBuffers[i], displayTitle, style);
           if (!avatarBuffer) return composed;
           try {
-            return await compositeAvatar(composed, avatarBuffer, style);
+            return await compositeAvatar(composed, avatarBuffer, style, avatarKind);
           } catch (e) {
             console.warn(`Avatar composite failed for ${style} (using bare thumb):`, e);
             return composed;
@@ -272,7 +282,13 @@ export async function POST(request: NextRequest) {
     await admin.from('usage_logs').insert({
       user_id: user.id,
       event_type: 'generation_completed',
-      metadata: { video_id: videoId, title: meta.title, use_face: useFace },
+      metadata: {
+        video_id: videoId,
+        title: meta.title,
+        use_face: useFace,
+        avatar_kind: useFace ? avatarKind : null,
+        custom_text: customText || null,
+      },
     });
 
     return NextResponse.json({

@@ -759,35 +759,66 @@ const AVATAR_PLACEMENTS: Record<ThumbnailStyle, AvatarPlacement> = {
   editorial: { diameter: 150, x: 1100, y: 30, ringColor: '#ffffff', ringWidth: 4 },
 };
 
+export type AvatarKind = 'face' | 'logo';
+
 /**
  * Overlay a circular avatar onto a composed thumbnail.
  *
- * Render order: drop-shadow → colored ring → circle-masked avatar.
- * Placement and ring color vary per style (see AVATAR_PLACEMENTS).
+ * - kind='face': avatar fills the disc (cover crop, smart attention). Best for
+ *   profile photos — gives a strong, recognizable face on the thumbnail.
+ * - kind='logo': avatar sits on a solid white disc, scaled to fit (contain).
+ *   Logos / wordmarks never get cropped this way; reads as a clean badge.
+ *
+ * Render order: drop-shadow → colored ring → (white disc, logo only) →
+ * circle-masked avatar. Placement and ring color vary per style.
  */
 export async function compositeAvatar(
   thumbnailBuffer: Buffer,
   avatarBuffer: Buffer,
-  style: ThumbnailStyle
+  style: ThumbnailStyle,
+  kind: AvatarKind = 'face'
 ): Promise<Buffer> {
   const place = AVATAR_PLACEMENTS[style];
   const { diameter, x, y, ringColor, ringWidth } = place;
   const r = diameter / 2;
 
-  // Resize avatar (square cover crop).
-  const resized = await sharp(avatarBuffer)
-    .resize(diameter, diameter, { fit: 'cover', position: 'attention' })
-    .png()
-    .toBuffer();
-
-  // Circular alpha mask.
-  const maskSvg = Buffer.from(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${diameter}" height="${diameter}"><circle cx="${r}" cy="${r}" r="${r}" fill="white"/></svg>`
-  );
-  const masked = await sharp(resized)
-    .composite([{ input: maskSvg, blend: 'dest-in' }])
-    .png()
-    .toBuffer();
+  let masked: Buffer;
+  if (kind === 'logo') {
+    // Logo: contain-fit on a transparent canvas (centered), then composite
+    // onto a white disc inside the circular mask below. Inset by 12% so the
+    // logo breathes inside the ring instead of touching it.
+    const innerSize = Math.round(diameter * 0.76);
+    const innerOffset = Math.round((diameter - innerSize) / 2);
+    const fitted = await sharp(avatarBuffer)
+      .resize(innerSize, innerSize, {
+        fit: 'contain',
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      })
+      .png()
+      .toBuffer();
+    // White disc, full diameter.
+    const whiteDiscSvg = Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${diameter}" height="${diameter}"><circle cx="${r}" cy="${r}" r="${r}" fill="white"/></svg>`
+    );
+    masked = await sharp(whiteDiscSvg)
+      .png()
+      .composite([{ input: fitted, top: innerOffset, left: innerOffset }])
+      .png()
+      .toBuffer();
+  } else {
+    // Face: cover crop with smart attention, then apply a circular alpha mask.
+    const resized = await sharp(avatarBuffer)
+      .resize(diameter, diameter, { fit: 'cover', position: 'attention' })
+      .png()
+      .toBuffer();
+    const maskSvg = Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${diameter}" height="${diameter}"><circle cx="${r}" cy="${r}" r="${r}" fill="white"/></svg>`
+    );
+    masked = await sharp(resized)
+      .composite([{ input: maskSvg, blend: 'dest-in' }])
+      .png()
+      .toBuffer();
+  }
 
   // Solid colored ring (drawn under the avatar, slightly larger).
   const outerDiameter = diameter + ringWidth * 2;
