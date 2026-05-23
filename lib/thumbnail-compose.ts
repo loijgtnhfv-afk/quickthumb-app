@@ -736,3 +736,93 @@ export async function composeQuadGrid(
 export const QUAD_GRID_DESCRIPTION =
   'Keyword spotlight — raw scene ×4 with one bold centered keyword';
 
+// ---- Avatar overlay ---------------------------------------------------------
+
+type AvatarPlacement = {
+  diameter: number;
+  // Top-left corner of the avatar disc (NOT the ring). Canvas is 1280x720.
+  x: number;
+  y: number;
+  ringColor: string;
+  ringWidth: number;
+};
+
+// Per-style placement: avoid the area each style uses for text.
+// vlog       — text dead-center → avatar bottom-right
+// tech       — left text panel  → avatar bottom-right (right side is photo subject anyway)
+// gaming     — title at bottom  → avatar top-right
+// editorial  — bottom bar 220px → avatar top-right, small
+const AVATAR_PLACEMENTS: Record<ThumbnailStyle, AvatarPlacement> = {
+  vlog: { diameter: 200, x: 1040, y: 480, ringColor: '#ffffff', ringWidth: 6 },
+  tech: { diameter: 240, x: 970, y: 430, ringColor: '#22d3ee', ringWidth: 6 },
+  gaming: { diameter: 260, x: 990, y: 30, ringColor: '#e11d48', ringWidth: 8 },
+  editorial: { diameter: 150, x: 1100, y: 30, ringColor: '#ffffff', ringWidth: 4 },
+};
+
+/**
+ * Overlay a circular avatar onto a composed thumbnail.
+ *
+ * Render order: drop-shadow → colored ring → circle-masked avatar.
+ * Placement and ring color vary per style (see AVATAR_PLACEMENTS).
+ */
+export async function compositeAvatar(
+  thumbnailBuffer: Buffer,
+  avatarBuffer: Buffer,
+  style: ThumbnailStyle
+): Promise<Buffer> {
+  const place = AVATAR_PLACEMENTS[style];
+  const { diameter, x, y, ringColor, ringWidth } = place;
+  const r = diameter / 2;
+
+  // Resize avatar (square cover crop).
+  const resized = await sharp(avatarBuffer)
+    .resize(diameter, diameter, { fit: 'cover', position: 'attention' })
+    .png()
+    .toBuffer();
+
+  // Circular alpha mask.
+  const maskSvg = Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${diameter}" height="${diameter}"><circle cx="${r}" cy="${r}" r="${r}" fill="white"/></svg>`
+  );
+  const masked = await sharp(resized)
+    .composite([{ input: maskSvg, blend: 'dest-in' }])
+    .png()
+    .toBuffer();
+
+  // Solid colored ring (drawn under the avatar, slightly larger).
+  const outerDiameter = diameter + ringWidth * 2;
+  const outerR = outerDiameter / 2;
+  const ringSvg = Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${outerDiameter}" height="${outerDiameter}"><circle cx="${outerR}" cy="${outerR}" r="${outerR}" fill="${ringColor}"/></svg>`
+  );
+  const ring = await sharp(ringSvg).png().toBuffer();
+
+  // Soft drop-shadow (blurred black disc, slightly offset down/right).
+  const shadowPad = 14;
+  const shadowDiameter = outerDiameter + shadowPad * 2;
+  const shadowR = shadowDiameter / 2;
+  const shadowSvg = Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${shadowDiameter}" height="${shadowDiameter}"><defs><filter id="b"><feGaussianBlur stdDeviation="6"/></filter></defs><circle cx="${shadowR}" cy="${shadowR}" r="${outerR}" fill="black" opacity="0.55" filter="url(#b)"/></svg>`
+  );
+  const shadow = await sharp(shadowSvg).png().toBuffer();
+
+  // Clamp positions so we don't composite off-canvas (Sharp throws).
+  const canvasW = 1280;
+  const canvasH = 720;
+  const ringX = Math.max(0, Math.min(canvasW - outerDiameter, x - ringWidth));
+  const ringY = Math.max(0, Math.min(canvasH - outerDiameter, y - ringWidth));
+  const avatarX = ringX + ringWidth;
+  const avatarY = ringY + ringWidth;
+  const shadowX = Math.max(0, Math.min(canvasW - shadowDiameter, ringX - shadowPad + 4));
+  const shadowY = Math.max(0, Math.min(canvasH - shadowDiameter, ringY - shadowPad + 4));
+
+  return await sharp(thumbnailBuffer)
+    .composite([
+      { input: shadow, left: shadowX, top: shadowY },
+      { input: ring, left: ringX, top: ringY },
+      { input: masked, left: avatarX, top: avatarY },
+    ])
+    .png()
+    .toBuffer();
+}
+

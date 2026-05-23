@@ -5,6 +5,7 @@ import {
   composeThumbnail,
   composeQuadGrid,
   composeQuadGridRaw,
+  compositeAvatar,
   cleanTitle,
   extractDisplayTitle,
   ALL_STYLES,
@@ -12,42 +13,15 @@ import {
   QUAD_GRID_DESCRIPTION,
   type ThumbnailStyle,
 } from '@/lib/thumbnail-compose';
+import {
+  extractVideoId,
+  fetchVideoMetadata,
+  fetchChannelInfo,
+  fetchAvatarBuffer,
+} from '@/lib/youtube';
 
 export const maxDuration = 60;
 export const runtime = 'nodejs';
-
-function extractVideoId(url: string): string | null {
-  const patterns = [
-    /youtube\.com\/watch\?v=([\w-]{11})/,
-    /youtu\.be\/([\w-]{11})/,
-    /youtube\.com\/shorts\/([\w-]{11})/,
-  ];
-  for (const p of patterns) {
-    const m = url.match(p);
-    if (m) return m[1];
-  }
-  return null;
-}
-
-async function fetchVideoMetadata(videoId: string) {
-  const apiKey = process.env.YOUTUBE_API_KEY;
-  if (!apiKey) throw new Error('YOUTUBE_API_KEY not configured');
-
-  const url = `https://www.googleapis.com/youtube/v3/videos?id=${videoId}&part=snippet&key=${apiKey}`;
-  const res = await fetch(url, { cache: 'no-store' });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`YouTube API ${res.status}: ${body.slice(0, 300)}`);
-  }
-  const data = await res.json();
-  const item = data.items?.[0];
-  if (!item) throw new Error('Video not found or private');
-  return {
-    title: item.snippet.title as string,
-    description: (item.snippet.description as string) || '',
-    channelTitle: item.snippet.channelTitle as string,
-  };
-}
 
 const NEGATIVE_PROMPT =
   'NO text, NO letters, NO words, NO captions, NO logos, NO writing, NO glyphs, NO numbers, NO signs, NO screens or monitors displaying any characters, NO fake inscriptions, NO subtitles';
@@ -149,6 +123,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json().catch(() => ({}));
     const youtubeUrl = typeof body.youtube_url === 'string' ? body.youtube_url.trim() : '';
+    const useFace = body.use_face === true;
     if (!youtubeUrl) {
       return NextResponse.json({ error: 'youtube_url is required' }, { status: 400 });
     }
@@ -208,25 +183,49 @@ export async function POST(request: NextRequest) {
     let composedUrls: string[];
     let rawUrls: string[];
     try {
-      // 1) Generate 4 style-specific backgrounds in parallel.
-      const bgBuffers = await Promise.all(
-        stylePrompts.map(async (prompt) => {
-          const bgUrl = await generateBackground(prompt);
-          const bgRes = await fetch(bgUrl);
-          if (!bgRes.ok) throw new Error(`Failed to fetch background: ${bgRes.status}`);
-          return Buffer.from(await bgRes.arrayBuffer());
+      // 1) Generate 4 style-specific backgrounds in parallel. If the user
+      // opted in for face overlay, fetch the channel avatar in parallel too —
+      // it doesn't block the AI bgs and any failure degrades silently.
+      const [bgBuffers, avatarBuffer] = await Promise.all([
+        Promise.all(
+          stylePrompts.map(async (prompt) => {
+            const bgUrl = await generateBackground(prompt);
+            const bgRes = await fetch(bgUrl);
+            if (!bgRes.ok) throw new Error(`Failed to fetch background: ${bgRes.status}`);
+            return Buffer.from(await bgRes.arrayBuffer());
+          })
+        ),
+        (async (): Promise<Buffer | null> => {
+          if (!useFace) return null;
+          try {
+            const channel = await fetchChannelInfo(meta.channelId);
+            if (!channel.avatarUrl) return null;
+            return await fetchAvatarBuffer(channel.avatarUrl);
+          } catch (e) {
+            console.warn('Avatar fetch failed (continuing without):', e);
+            return null;
+          }
+        })(),
+      ]);
+
+      // 2) Compose 4 styled thumbnails, each using its own background.
+      // If we got an avatar, overlay it per-style after composition.
+      const composedBuffers = await Promise.all(
+        ALL_STYLES.map(async (style, i) => {
+          const composed = await composeThumbnail(bgBuffers[i], displayTitle, style);
+          if (!avatarBuffer) return composed;
+          try {
+            return await compositeAvatar(composed, avatarBuffer, style);
+          } catch (e) {
+            console.warn(`Avatar composite failed for ${style} (using bare thumb):`, e);
+            return composed;
+          }
         })
       );
 
-      // 2) Compose 4 styled thumbnails, each using its own background.
-      const composedBuffers = await Promise.all(
-        ALL_STYLES.map((style, i) =>
-          composeThumbnail(bgBuffers[i], displayTitle, style)
-        )
-      );
-
       // 3) 5th composite: 4 different bgs tiled 2x2 + central keyword.
-      // 5th raw: same tile, no keyword.
+      // 5th raw: same tile, no keyword. (Avatar is skipped on the quad grid —
+      // the centered keyword owns the visual center.)
       const [quadBuffer, quadRawBuffer] = await Promise.all([
         composeQuadGrid(bgBuffers, displayTitle),
         composeQuadGridRaw(bgBuffers),
@@ -273,7 +272,7 @@ export async function POST(request: NextRequest) {
     await admin.from('usage_logs').insert({
       user_id: user.id,
       event_type: 'generation_completed',
-      metadata: { video_id: videoId, title: meta.title },
+      metadata: { video_id: videoId, title: meta.title, use_face: useFace },
     });
 
     return NextResponse.json({

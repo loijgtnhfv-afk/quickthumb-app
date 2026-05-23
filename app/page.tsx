@@ -19,6 +19,11 @@ interface Profile {
   generations_limit: number;
 }
 
+interface ChannelPreview {
+  channel_title: string;
+  avatar_url: string | null;
+}
+
 function isValidYouTubeUrl(url: string): boolean {
   const patterns = [
     /^(https?:\/\/)?(www\.)?youtube\.com\/watch\?v=[\w-]{11}/,
@@ -38,6 +43,8 @@ export default function Home() {
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState('');
   const [results, setResults] = useState<Thumbnail[]>([]);
+  const [channelPreview, setChannelPreview] = useState<ChannelPreview | null>(null);
+  const [useFace, setUseFace] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -66,6 +73,42 @@ export default function Home() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Debounced channel preview: as soon as a valid URL is pasted, fetch the
+  // uploader's avatar + name so the user can decide whether to enable the
+  // "include uploader's face" overlay.
+  useEffect(() => {
+    if (!url || !isValidYouTubeUrl(url)) {
+      setChannelPreview(null);
+      return;
+    }
+    const ctl = new AbortController();
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/preview-channel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ youtube_url: url }),
+          signal: ctl.signal,
+        });
+        if (!res.ok) {
+          setChannelPreview(null);
+          return;
+        }
+        const data = await res.json();
+        setChannelPreview({
+          channel_title: data.channel_title || '',
+          avatar_url: data.avatar_url || null,
+        });
+      } catch {
+        // aborted or network error — silently ignore, preview is optional
+      }
+    }, 400);
+    return () => {
+      clearTimeout(t);
+      ctl.abort();
+    };
+  }, [url]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -98,7 +141,10 @@ export default function Home() {
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ youtube_url: url }),
+        body: JSON.stringify({
+          youtube_url: url,
+          use_face: useFace && !!channelPreview?.avatar_url,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -139,6 +185,8 @@ export default function Home() {
     setStatus('idle');
     setResults([]);
     setError('');
+    setChannelPreview(null);
+    setUseFace(false);
   };
 
   const remaining = profile ? Math.max(0, profile.generations_limit - profile.generations_used) : null;
@@ -319,6 +367,58 @@ export default function Home() {
               {error}
             </div>
           )}
+
+          {channelPreview && channelPreview.avatar_url && (
+            <label
+              style={{
+                marginTop: 14,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                padding: '10px 14px',
+                background: 'rgba(255,255,255,0.05)',
+                border: useFace
+                  ? '1px solid rgba(167,139,250,0.6)'
+                  : '1px solid rgba(255,255,255,0.15)',
+                borderRadius: 10,
+                cursor: 'pointer',
+                transition: 'border-color 0.15s ease, background 0.15s ease',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={useFace}
+                onChange={(e) => setUseFace(e.target.checked)}
+                style={{
+                  width: 18,
+                  height: 18,
+                  accentColor: '#a78bfa',
+                  cursor: 'pointer',
+                }}
+              />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={channelPreview.avatar_url}
+                alt={channelPreview.channel_title}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: '50%',
+                  objectFit: 'cover',
+                  border: '1px solid rgba(255,255,255,0.2)',
+                }}
+              />
+              <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+                <span style={{ fontSize: 14, fontWeight: 600 }}>
+                  {channelPreview.channel_title}の顔を入れる
+                </span>
+                <span style={{ fontSize: 12, opacity: 0.6 }}>
+                  チャンネルのプロフィール画像を各サムネに合成します。顔じゃない場合はオフ推奨。
+                </span>
+              </div>
+            </label>
+          )}
+
           <p style={{ fontSize: 13, opacity: 0.55, marginTop: 14, marginBottom: 0 }}>
             Works with youtube.com/watch, youtu.be, and Shorts links.
           </p>
