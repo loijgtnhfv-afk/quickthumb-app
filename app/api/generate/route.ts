@@ -121,7 +121,12 @@ function buildStylePrompt(
   title: string,
   description: string,
   channel: string,
-  style: ThumbnailStyle
+  style: ThumbnailStyle,
+  // When the LLM translator was NOT used (no API key, or English-only input)
+  // we don't trust Flux with a topic that might still look "Asian-coded"
+  // enough to summon a generic Tokyo street with fake-character signage.
+  // Push hard toward studio portraits with no environmental signage.
+  enforceCleanBackdrop: boolean = false
 ): string {
   // Strip CJK from every user-supplied bit BEFORE it touches the prompt —
   // Flux Schnell loves to scribble fake Japanese characters on signs / shirts
@@ -137,9 +142,13 @@ function buildStylePrompt(
   const ctxPart = safeCtx ? ` Context from the video description: ${safeCtx}.` : '';
   const tail = `${NEGATIVE_PROMPT}. 16:9 aspect ratio.`;
 
-  // Photo-style topic prefix shared by all 4 styles. The "plain composition"
-  // clause discourages Flux from putting text-bearing props in the scene.
-  const photoTopic = `A photographic scene visibly tied to the topic of ${subjectPhrase}${channelPart}, with a clear hero subject related to the topic.${ctxPart} High quality, photorealistic. Plain composition with no signs, posters, banners, or text-bearing objects in the frame.`;
+  // Strong anti-signage clause used when we can't trust the topic. Empty
+  // string in the trusted-topic path so rich scenes are still allowed.
+  const cleanGuard = enforceCleanBackdrop
+    ? ' Shot as a tight studio-style portrait or close-up of the hero subject against a plain colored or softly blurred backdrop. ABSOLUTELY NO street scenes, NO shop fronts, NO neon signs, NO posters, NO billboards, NO graffiti, NO crowd scenes, NO signage of any kind anywhere in the frame.'
+    : '';
+
+  const photoTopic = `A photographic scene visibly tied to the topic of ${subjectPhrase}${channelPart}, with a clear hero subject related to the topic.${ctxPart} High quality, photorealistic. Plain composition with no signs, posters, banners, or text-bearing objects in the frame.${cleanGuard}`;
 
   switch (style) {
     case 'vlog':
@@ -148,7 +157,7 @@ function buildStylePrompt(
       // Avoid screens/monitors — Flux loves to scribble fake glyphs on them.
       return `${photoTopic} Shot as a sleek modern editorial portrait or hero-object photograph: crisp directional studio lighting, cool palette with cyan and deep navy accents, clean composition, premium magazine feel. The hero subject is a person or central object related to the topic — NOT a computer, NOT a monitor, NOT a desk setup, NOT a phone screen. Subject biased right, left side slightly darker for overlay text. ${tail}`;
     case 'gaming':
-      return `${photoTopic} Shot as a cinematic high-energy moment: dramatic dark lighting with vibrant red and neon accents, deep blacks, strong rim light, intense atmosphere, hero shot of the topic subject. Bold action vibe with comic-book energy. ${tail}`;
+      return `${photoTopic} Shot as a cinematic high-energy moment: dramatic dark lighting with vibrant red ${enforceCleanBackdrop ? 'RIM LIGHT (no neon signs)' : 'and neon accents'}, deep blacks, strong rim light, intense atmosphere, hero shot of the topic subject. Bold action vibe with comic-book energy. ${tail}`;
     case 'magazine':
       // Print-magazine cover energy — hero subject biased right, negative
       // space top-left where the kicker + display title will land.
@@ -249,8 +258,12 @@ export async function POST(request: NextRequest) {
     const promptTitle = en ? en.title : meta.title;
     const promptChannel = en ? en.channel : meta.channelTitle;
     const promptDescription = en ? en.topic : meta.description;
+    // If we don't have a trusted English topic AND the original was CJK,
+    // the prompt has no real signal — force clean studio backdrops so Flux
+    // can't fall back to Tokyo-street scenes filled with fake signage.
+    const enforceCleanBackdrop = !en && hasCJK(meta.title + meta.channelTitle + meta.description);
     const stylePrompts = ALL_STYLES.map((s) =>
-      buildStylePrompt(promptTitle, promptDescription, promptChannel, s)
+      buildStylePrompt(promptTitle, promptDescription, promptChannel, s, enforceCleanBackdrop)
     );
     // Shorter, cleaner headline for the visible overlay (strips
     // "(4K Remaster)", "www", etc. and limits to a punchy ~24 chars).
