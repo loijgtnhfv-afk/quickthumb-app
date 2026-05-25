@@ -243,11 +243,23 @@ export const STYLE_DESCRIPTIONS: Record<ThumbnailStyle, string> = {
 
 const h = React.createElement;
 
+// Stylistic kicker labels — read as "this thumbnail's vibe" rather than
+// "this video's genre". Previously hardcoded inside each build function;
+// pulled out here so all kickers live in one place and never claim the
+// underlying video belongs to the kicker's genre.
+export const STYLE_KICKERS: Record<ThumbnailStyle, string> = {
+  vlog: 'DAILY',
+  tech: 'GUIDE',
+  gaming: 'ACTION!',
+  magazine: 'FEATURE',
+};
+
 function buildVlogElement(title: string, bgDataUrl: string): React.ReactElement {
-  // Modern vlog: small white "VLOG" pill kicker, then a big bold sans title.
-  // Replaces the old thin-keyline serif look (felt weak per user feedback).
+  // Modern vlog: small white pill kicker (style label, not a genre claim),
+  // then a big bold sans title. Replaces the old thin-keyline serif look.
   const lines = wrapTitle(title, 11, 2);
   const fontSize = lines.length === 1 ? 112 : 88;
+  const kicker = STYLE_KICKERS.vlog;
 
   return h(
     'div',
@@ -315,7 +327,7 @@ function buildVlogElement(title: string, bgDataUrl: string): React.ReactElement 
             marginBottom: 28,
           },
         },
-        'VLOG'
+        kicker
       ),
       // Big sans title, centered.
       h(
@@ -471,7 +483,7 @@ function buildGamingElement(title: string, bgDataUrl: string): React.ReactElemen
           textShadow: '2px 2px 0 #000',
         },
       },
-      'ACTION!'
+      STYLE_KICKERS.gaming
     ),
     // Big skewed bottom title — yellow over black outline, red drop shadow.
     h(
@@ -576,7 +588,7 @@ function buildMagazineElement(title: string, bgDataUrl: string): React.ReactElem
             letterSpacing: '0.24em',
           },
         },
-        'FEATURE'
+        STYLE_KICKERS.magazine
       )
     ),
     // Big serif display title, left-aligned, restricted to ~60% width so the
