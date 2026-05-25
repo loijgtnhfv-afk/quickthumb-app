@@ -1,16 +1,19 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslations, useLocale } from 'next-intl';
 import { createClient } from '@/lib/supabase/client';
 import type { User } from '@supabase/supabase-js';
 
 type Status = 'idle' | 'loading' | 'success' | 'error';
+type StyleKey = 'vlog' | 'tech' | 'gaming' | 'magazine' | 'quad';
 
 interface Thumbnail {
   id: number;
   url: string;
   image_url: string;
   prompt: string;
+  style_key?: StyleKey;
 }
 
 interface Profile {
@@ -33,8 +36,65 @@ function isValidYouTubeUrl(url: string): boolean {
   return patterns.some((p) => p.test(url.trim()));
 }
 
+// Tiny header toggle to switch between EN and JA. Persists via cookie so the
+// next request hits next-intl's request config with the correct locale.
+function LangSwitcher({ current }: { current: string }) {
+  const t = useTranslations('language');
+  const [busy, setBusy] = useState(false);
+  const handleSwitch = async (next: 'en' | 'ja') => {
+    if (next === current || busy) return;
+    setBusy(true);
+    try {
+      await fetch('/api/locale', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ locale: next }),
+      });
+      // Hard reload so the server layout re-renders with the new locale.
+      window.location.reload();
+    } catch {
+      setBusy(false);
+    }
+  };
+  return (
+    <div
+      title={t('switchLabel')}
+      style={{ display: 'inline-flex', gap: 4, alignItems: 'center', fontSize: 12 }}
+    >
+      {(['en', 'ja'] as const).map((loc) => {
+        const active = loc === current;
+        return (
+          <button
+            key={loc}
+            type="button"
+            onClick={() => handleSwitch(loc)}
+            disabled={busy || active}
+            style={{
+              padding: '4px 10px',
+              fontSize: 12,
+              fontWeight: 600,
+              color: active ? '#0f0c29' : '#fff',
+              background: active
+                ? 'rgba(255,255,255,0.9)'
+                : 'rgba(255,255,255,0.08)',
+              border: '1px solid rgba(255,255,255,0.18)',
+              borderRadius: 999,
+              cursor: active ? 'default' : busy ? 'wait' : 'pointer',
+              opacity: busy && !active ? 0.5 : 1,
+            }}
+          >
+            {loc === 'en' ? 'EN' : 'JA'}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function Home() {
   const supabase = createClient();
+  const locale = useLocale();
+  const t = useTranslations();
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -85,7 +145,7 @@ export default function Home() {
       return;
     }
     const ctl = new AbortController();
-    const t = setTimeout(async () => {
+    const tid = setTimeout(async () => {
       try {
         const res = await fetch('/api/preview-channel', {
           method: 'POST',
@@ -107,7 +167,7 @@ export default function Home() {
       }
     }, 400);
     return () => {
-      clearTimeout(t);
+      clearTimeout(tid);
       ctl.abort();
     };
   }, [url]);
@@ -129,11 +189,11 @@ export default function Home() {
       return;
     }
     if (!url.trim()) {
-      setError('Please paste a YouTube URL.');
+      setError(t('form.errorEmpty'));
       return;
     }
     if (!isValidYouTubeUrl(url)) {
-      setError('That doesn’t look like a valid YouTube URL. Try https://youtube.com/watch?v=...');
+      setError(t('form.errorInvalid'));
       return;
     }
 
@@ -153,9 +213,9 @@ export default function Home() {
       const data = await res.json();
       if (!res.ok) {
         if (res.status === 402) {
-          setError(`You’ve used all ${data.limit} free generations. Upgrade to Pro for 150/month.`);
+          setError(t('form.errorOverLimit', { limit: data.limit }));
         } else {
-          setError(data.error || 'Generation failed.');
+          setError(data.error || t('form.errorNetwork'));
         }
         setStatus('error');
         return;
@@ -168,14 +228,14 @@ export default function Home() {
       );
       setStatus('success');
     } catch {
-      setError('Network error. Please try again.');
+      setError(t('form.errorNetwork'));
       setStatus('error');
     }
   };
 
-  const handleDownload = (url: string, filename: string) => {
+  const handleDownload = (downloadUrl: string, filename: string) => {
     const a = document.createElement('a');
-    a.href = url;
+    a.href = downloadUrl;
     a.download = filename;
     a.target = '_blank';
     a.rel = 'noopener noreferrer';
@@ -197,6 +257,19 @@ export default function Home() {
 
   const remaining = profile ? Math.max(0, profile.generations_limit - profile.generations_used) : null;
 
+  // For each thumb card: prefer the localized lookup if the API gave us a
+  // style_key; fall back to the English `prompt` returned by older deploys.
+  const styleLabelFor = (thumb: Thumbnail): string => {
+    if (thumb.style_key) {
+      try {
+        return t(`styles.${thumb.style_key}`);
+      } catch {
+        // missing key — fall through to the English prompt
+      }
+    }
+    return thumb.prompt;
+  };
+
   return (
     <main
       style={{
@@ -211,14 +284,15 @@ export default function Home() {
         {/* Header */}
         <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
           <a href="/" style={{ color: '#fff', textDecoration: 'none', fontSize: 18, fontWeight: 700 }}>
-            Quickthumb
+            {t('nav.brand')}
           </a>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14 }}>
+            <LangSwitcher current={locale} />
             {authLoading ? null : user ? (
               <>
                 {remaining !== null && (
                   <span style={{ opacity: 0.7 }}>
-                    {remaining}/{profile!.generations_limit} left
+                    {t('nav.remaining', { count: remaining, limit: profile!.generations_limit })}
                   </span>
                 )}
                 <span style={{ opacity: 0.85, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -236,13 +310,13 @@ export default function Home() {
                     cursor: 'pointer',
                   }}
                 >
-                  Sign out
+                  {t('nav.signOut')}
                 </button>
               </>
             ) : (
               <>
                 <a href="/auth" style={{ color: 'rgba(255,255,255,0.75)', textDecoration: 'none' }}>
-                  Sign in
+                  {t('nav.signIn')}
                 </a>
                 <a
                   href="/auth?mode=signup"
@@ -255,7 +329,7 @@ export default function Home() {
                     borderRadius: 8,
                   }}
                 >
-                  Sign up
+                  {t('nav.signUp')}
                 </a>
               </>
             )}
@@ -277,7 +351,7 @@ export default function Home() {
               marginBottom: 16,
             }}
           >
-            Beta · Free for early users
+            {t('hero.beta')}
           </div>
           <h1
             style={{
@@ -291,11 +365,10 @@ export default function Home() {
               backgroundClip: 'text',
             }}
           >
-            YouTube thumbnails<br />in 60 seconds.
+            {t('hero.titleLine1')}<br />{t('hero.titleLine2')}
           </h1>
           <p style={{ fontSize: 18, opacity: 0.75, maxWidth: 600, margin: '20px auto 0' }}>
-            Paste any YouTube URL. Get 5 AI-generated thumbnail options instantly.
-            5 free · No credit card.
+            {t('hero.subtitle')}
           </p>
         </div>
 
@@ -315,7 +388,7 @@ export default function Home() {
             htmlFor="youtube-url"
             style={{ display: 'block', fontSize: 14, opacity: 0.85, marginBottom: 10, fontWeight: 500 }}
           >
-            YouTube URL
+            {t('form.urlLabel')}
           </label>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <input
@@ -323,7 +396,7 @@ export default function Home() {
               type="url"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://youtube.com/watch?v=..."
+              placeholder={t('form.urlPlaceholder')}
               disabled={status === 'loading'}
               style={{
                 flex: '1 1 320px',
@@ -355,7 +428,11 @@ export default function Home() {
                 transition: 'transform 0.15s ease',
               }}
             >
-              {status === 'loading' ? 'Generating...' : user ? 'Generate' : 'Sign up & generate'}
+              {status === 'loading'
+                ? t('form.submitting')
+                : user
+                ? t('form.submitGenerate')
+                : t('form.submitSignup')}
             </button>
           </div>
           {error && (
@@ -420,10 +497,10 @@ export default function Home() {
                 />
                 <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
                   <span style={{ fontSize: 14, fontWeight: 600 }}>
-                    {channelPreview.channel_title}のアイコンを入れる
+                    {t('avatar.checkboxLabel', { channel: channelPreview.channel_title })}
                   </span>
                   <span style={{ fontSize: 12, opacity: 0.6 }}>
-                    チャンネルのプロフィール画像を各サムネに合成します。
+                    {t('avatar.checkboxHint')}
                   </span>
                 </div>
               </label>
@@ -440,7 +517,7 @@ export default function Home() {
                     flexWrap: 'wrap',
                   }}
                 >
-                  <span style={{ fontSize: 13, opacity: 0.75 }}>表示方法:</span>
+                  <span style={{ fontSize: 13, opacity: 0.75 }}>{t('avatar.modeLabel')}</span>
                   {(['face', 'logo'] as const).map((kind) => {
                     const active = avatarKind === kind;
                     return (
@@ -463,7 +540,7 @@ export default function Home() {
                           cursor: 'pointer',
                         }}
                       >
-                        {kind === 'face' ? '顔（インパクト大）' : 'ロゴ（切らずに表示）'}
+                        {kind === 'face' ? t('avatar.modeFace') : t('avatar.modeLogo')}
                       </button>
                     );
                   })}
@@ -483,7 +560,7 @@ export default function Home() {
                 fontWeight: 500,
               }}
             >
-              字幕（任意）<span style={{ opacity: 0.5, fontWeight: 400 }}> · 空欄ならタイトルから自動生成</span>
+              {t('caption.label')}<span style={{ opacity: 0.5, fontWeight: 400 }}>{t('caption.hint')}</span>
             </label>
             <input
               id="custom-text"
@@ -491,7 +568,7 @@ export default function Home() {
               value={customText}
               onChange={(e) => setCustomText(e.target.value)}
               maxLength={60}
-              placeholder="例: 月収100万になった理由"
+              placeholder={t('caption.placeholder')}
               disabled={status === 'loading'}
               style={{
                 width: '100%',
@@ -508,7 +585,7 @@ export default function Home() {
           </div>
 
           <p style={{ fontSize: 13, opacity: 0.55, marginTop: 14, marginBottom: 0 }}>
-            Works with youtube.com/watch, youtu.be, and Shorts links.
+            {t('form.urlHint')}
           </p>
         </form>
 
@@ -542,7 +619,7 @@ export default function Home() {
                 gap: 12,
               }}
             >
-              <h2 style={{ fontSize: 22, margin: 0, fontWeight: 700 }}>5 thumbnails ready</h2>
+              <h2 style={{ fontSize: 22, margin: 0, fontWeight: 700 }}>{t('results.heading')}</h2>
               <button
                 onClick={handleReset}
                 style={{
@@ -555,7 +632,7 @@ export default function Home() {
                   cursor: 'pointer',
                 }}
               >
-                Generate again
+                {t('results.regenerate')}
               </button>
             </div>
             <div className="thumb-row">
@@ -578,7 +655,7 @@ export default function Home() {
                   />
                   <div style={{ padding: 14 }}>
                     <p style={{ fontSize: 13, opacity: 0.7, margin: '0 0 12px', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                      {thumb.prompt}
+                      {styleLabelFor(thumb)}
                     </p>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       <button
@@ -595,7 +672,7 @@ export default function Home() {
                           cursor: 'pointer',
                         }}
                       >
-                        Download
+                        {t('results.download')}
                       </button>
                       <button
                         onClick={() => handleDownload(thumb.image_url, `quickthumb-${thumb.id}-image.png`)}
@@ -611,7 +688,7 @@ export default function Home() {
                           cursor: 'pointer',
                         }}
                       >
-                        Image only
+                        {t('results.imageOnly')}
                       </button>
                     </div>
                   </div>
@@ -622,9 +699,9 @@ export default function Home() {
         )}
 
         <footer style={{ textAlign: 'center', marginTop: 64, fontSize: 13, opacity: 0.5 }}>
-          © 2026 Quickthumb ·{' '}
-          <a href="/terms.html" style={{ color: 'inherit' }}>Terms</a> ·{' '}
-          <a href="/privacy.html" style={{ color: 'inherit' }}>Privacy</a>
+          {t('footer.copyright')} ·{' '}
+          <a href="/terms.html" style={{ color: 'inherit' }}>{t('footer.terms')}</a> ·{' '}
+          <a href="/privacy.html" style={{ color: 'inherit' }}>{t('footer.privacy')}</a>
         </footer>
       </div>
 

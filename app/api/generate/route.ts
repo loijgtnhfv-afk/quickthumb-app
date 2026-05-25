@@ -399,6 +399,10 @@ export async function POST(request: NextRequest) {
         id: i + 1,
         url,
         image_url: rawUrls[i],
+        // style_key is the i18n lookup key (styles.<key>) — page picks the
+        // localized description. `prompt` stays as the English fallback for
+        // older clients / debugging.
+        style_key: i < ALL_STYLES.length ? ALL_STYLES[i] : 'quad',
         prompt:
           i < ALL_STYLES.length
             ? STYLE_DESCRIPTIONS[ALL_STYLES[i]]

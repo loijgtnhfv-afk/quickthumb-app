@@ -1,0 +1,81 @@
+{
+  "nav": {
+    "brand": "Quickthumb",
+    "signIn": "ログイン",
+    "signUp": "サインアップ",
+    "signOut": "ログアウト",
+    "remaining": "残り {count}/{limit}"
+  },
+  "hero": {
+    "beta": "ベータ版 · 早期登録は無料",
+    "titleLine1": "YouTubeサムネを",
+    "titleLine2": "60秒で。",
+    "subtitle": "YouTubeのURLを貼るだけ。AIが5枚のサムネ案を即生成。最初の5枚は無料・クレカ不要。"
+  },
+  "form": {
+    "urlLabel": "YouTubeのURL",
+    "urlPlaceholder": "https://youtube.com/watch?v=...",
+    "submitGenerate": "生成する",
+    "submitSignup": "登録して生成",
+    "submitting": "生成中...",
+    "errorEmpty": "YouTubeのURLを入力してください。",
+    "errorInvalid": "YouTubeのURLとして認識できませんでした。例: https://youtube.com/watch?v=...",
+    "errorOverLimit": "無料枠の{limit}回を使い切りました。Proにアップグレードで月150回。",
+    "errorNetwork": "通信エラーが発生しました。もう一度お試しください。",
+    "urlHint": "youtube.com/watch、youtu.be、Shortsリンクに対応しています。"
+  },
+  "avatar": {
+    "checkboxLabel": "{channel}のアイコンを入れる",
+    "checkboxHint": "チャンネルのプロフィール画像を各サムネに合成します。",
+    "modeLabel": "表示方法:",
+    "modeFace": "顔（インパクト大）",
+    "modeLogo": "ロゴ（切らずに表示）"
+  },
+  "caption": {
+    "label": "字幕（任意）",
+    "hint": " · 空欄ならタイトルから自動生成",
+    "placeholder": "例: 月収100万になった理由"
+  },
+  "results": {
+    "heading": "サムネ5枚できあがり",
+    "regenerate": "もう一度生成",
+    "download": "ダウンロード",
+    "imageOnly": "画像のみ"
+  },
+  "footer": {
+    "copyright": "© 2026 Quickthumb",
+    "terms": "利用規約",
+    "privacy": "プライバシー"
+  },
+  "auth": {
+    "backToHome": "← Quickthumbに戻る",
+    "signinTitle": "おかえりなさい",
+    "signupTitle": "アカウントを作成",
+    "signinSubtitle": "ログインしてサムネを生成しましょう。",
+    "signupSubtitle": "登録するだけで5枚無料。クレカ不要。",
+    "emailLabel": "メールアドレス",
+    "passwordLabel": "パスワード",
+    "submitSignin": "ログイン",
+    "submitSignup": "アカウント作成",
+    "submitting": "処理中...",
+    "checkInbox": "確認用リンクをメールで送りました。受信箱を確認してください。",
+    "somethingWrong": "エラーが発生しました。",
+    "alreadyHaveAccount": "既にアカウントをお持ちですか?",
+    "noAccount": "アカウントをお持ちでないですか?",
+    "switchToSignin": "ログイン",
+    "switchToSignup": "サインアップ"
+  },
+  "styles": {
+    "vlog": "ライフスタイル／Vlog — 白いピル型キッカー + 中央大きめサンセリフ",
+    "tech": "テック／ハウツー — 左テキストパネル + 右側に主役",
+    "gaming": "ゲーミング／マンガ — 太い枠線+赤シャドウの黄色タイトル、「ACTION!」スタンプ",
+    "magazine": "マガジン表紙 — 上部キッカー + 写真の上に大きなセリフタイトル",
+    "quad": "キーワードスポット — シーン×4 + 中央に1つの太字キーワード"
+  },
+  "common": {
+    "loading": "読み込み中..."
+  },
+  "language": {
+    "switchLabel": "Language"
+  }
+}

@@ -2,6 +2,7 @@
 
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { createClient } from '@/lib/supabase/client';
 
 type Mode = 'signin' | 'signup';
@@ -10,6 +11,7 @@ function AuthForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialMode: Mode = searchParams.get('mode') === 'signup' ? 'signup' : 'signin';
+  const t = useTranslations();
 
   const [mode, setMode] = useState<Mode>(initialMode);
   const [email, setEmail] = useState('');
@@ -34,7 +36,7 @@ function AuthForm() {
           },
         });
         if (error) throw error;
-        setMessage({ type: 'success', text: 'Check your inbox for a confirmation link.' });
+        setMessage({ type: 'success', text: t('auth.checkInbox') });
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -42,7 +44,7 @@ function AuthForm() {
         router.refresh();
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Something went wrong.';
+      const msg = err instanceof Error ? err.message : t('auth.somethingWrong');
       setMessage({ type: 'error', text: msg });
     } finally {
       setLoading(false);
@@ -61,7 +63,7 @@ function AuthForm() {
           marginBottom: 24,
         }}
       >
-        ← Back to Quickthumb
+        {t('auth.backToHome')}
       </a>
       <div
         style={{
@@ -73,17 +75,15 @@ function AuthForm() {
         }}
       >
         <h1 style={{ fontSize: 24, fontWeight: 700, margin: '0 0 8px' }}>
-          {mode === 'signup' ? 'Create your account' : 'Welcome back'}
+          {mode === 'signup' ? t('auth.signupTitle') : t('auth.signinTitle')}
         </h1>
         <p style={{ fontSize: 14, opacity: 0.7, margin: '0 0 24px' }}>
-          {mode === 'signup'
-            ? '5 free thumbnails to start. No credit card.'
-            : 'Sign in to generate thumbnails.'}
+          {mode === 'signup' ? t('auth.signupSubtitle') : t('auth.signinSubtitle')}
         </p>
 
         <form onSubmit={handleSubmit}>
           <label style={{ display: 'block', fontSize: 13, opacity: 0.85, marginBottom: 6 }}>
-            Email
+            {t('auth.emailLabel')}
           </label>
           <input
             type="email"
@@ -106,7 +106,7 @@ function AuthForm() {
           />
 
           <label style={{ display: 'block', fontSize: 13, opacity: 0.85, marginBottom: 6 }}>
-            Password
+            {t('auth.passwordLabel')}
           </label>
           <input
             type="password"
@@ -147,10 +147,10 @@ function AuthForm() {
             }}
           >
             {loading
-              ? 'Please wait...'
+              ? t('auth.submitting')
               : mode === 'signup'
-              ? 'Create account'
-              : 'Sign in'}
+              ? t('auth.submitSignup')
+              : t('auth.submitSignin')}
           </button>
         </form>
 
@@ -186,7 +186,7 @@ function AuthForm() {
             textAlign: 'center',
           }}
         >
-          {mode === 'signup' ? 'Already have an account?' : "Don't have an account?"}{' '}
+          {mode === 'signup' ? t('auth.alreadyHaveAccount') : t('auth.noAccount')}{' '}
           <button
             type="button"
             onClick={() => {
@@ -203,7 +203,7 @@ function AuthForm() {
               padding: 0,
             }}
           >
-            {mode === 'signup' ? 'Sign in' : 'Sign up'}
+            {mode === 'signup' ? t('auth.switchToSignin') : t('auth.switchToSignup')}
           </button>
         </div>
       </div>
@@ -212,6 +212,7 @@ function AuthForm() {
 }
 
 export default function AuthPage() {
+  const t = useTranslations('common');
   return (
     <main
       style={{
@@ -225,7 +226,7 @@ export default function AuthPage() {
         padding: 20,
       }}
     >
-      <Suspense fallback={<div style={{ color: '#fff' }}>Loading...</div>}>
+      <Suspense fallback={<div style={{ color: '#fff' }}>{t('loading')}</div>}>
         <AuthForm />
       </Suspense>
     </main>

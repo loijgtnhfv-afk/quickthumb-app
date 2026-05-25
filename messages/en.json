@@ -1,0 +1,81 @@
+{
+  "nav": {
+    "brand": "Quickthumb",
+    "signIn": "Sign in",
+    "signUp": "Sign up",
+    "signOut": "Sign out",
+    "remaining": "{count}/{limit} left"
+  },
+  "hero": {
+    "beta": "Beta · Free for early users",
+    "titleLine1": "YouTube thumbnails",
+    "titleLine2": "in 60 seconds.",
+    "subtitle": "Paste any YouTube URL. Get 5 AI-generated thumbnail options instantly. 5 free · No credit card."
+  },
+  "form": {
+    "urlLabel": "YouTube URL",
+    "urlPlaceholder": "https://youtube.com/watch?v=...",
+    "submitGenerate": "Generate",
+    "submitSignup": "Sign up & generate",
+    "submitting": "Generating...",
+    "errorEmpty": "Please paste a YouTube URL.",
+    "errorInvalid": "That doesn’t look like a valid YouTube URL. Try https://youtube.com/watch?v=...",
+    "errorOverLimit": "You’ve used all {limit} free generations. Upgrade to Pro for 150/month.",
+    "errorNetwork": "Network error. Please try again.",
+    "urlHint": "Works with youtube.com/watch, youtu.be, and Shorts links."
+  },
+  "avatar": {
+    "checkboxLabel": "Include {channel}'s avatar",
+    "checkboxHint": "Composes the channel's profile image into each thumbnail.",
+    "modeLabel": "Display as:",
+    "modeFace": "Face (high impact)",
+    "modeLogo": "Logo (no crop)"
+  },
+  "caption": {
+    "label": "Caption (optional)",
+    "hint": " · Auto-generated from the title if left blank",
+    "placeholder": "e.g. Why I crossed $10K MRR"
+  },
+  "results": {
+    "heading": "5 thumbnails ready",
+    "regenerate": "Generate again",
+    "download": "Download",
+    "imageOnly": "Image only"
+  },
+  "footer": {
+    "copyright": "© 2026 Quickthumb",
+    "terms": "Terms",
+    "privacy": "Privacy"
+  },
+  "auth": {
+    "backToHome": "← Back to Quickthumb",
+    "signinTitle": "Welcome back",
+    "signupTitle": "Create your account",
+    "signinSubtitle": "Sign in to generate thumbnails.",
+    "signupSubtitle": "5 free thumbnails to start. No credit card.",
+    "emailLabel": "Email",
+    "passwordLabel": "Password",
+    "submitSignin": "Sign in",
+    "submitSignup": "Create account",
+    "submitting": "Please wait...",
+    "checkInbox": "Check your inbox for a confirmation link.",
+    "somethingWrong": "Something went wrong.",
+    "alreadyHaveAccount": "Already have an account?",
+    "noAccount": "Don't have an account?",
+    "switchToSignin": "Sign in",
+    "switchToSignup": "Sign up"
+  },
+  "styles": {
+    "vlog": "Lifestyle / Vlog — white pill kicker + big centered sans title",
+    "tech": "Tech / How-to — left text panel, hero subject on the right",
+    "gaming": "Gaming / Manga — yellow title with thick outline + red drop shadow, \"ACTION!\" stamp",
+    "magazine": "Magazine cover — top kicker + big serif display title on a hero photo",
+    "quad": "Keyword spotlight — raw scene ×4 with one bold centered keyword"
+  },
+  "common": {
+    "loading": "Loading..."
+  },
+  "language": {
+    "switchLabel": "言語"
+  }
+}
