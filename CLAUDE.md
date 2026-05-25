@@ -17,7 +17,7 @@ AI-powered YouTube thumbnail generator SaaS. Paste a YouTube URL, get 5 styled t
 
 1. User pastes YouTube URL
 2. Fetch video title + description via YouTube Data API v3
-3. Replicate Flux Schnell generates **4 different** style-specific backgrounds in parallel (one per style, each $0.003 → $0.012 total). Prompts are tuned per style: warm lifestyle (vlog), cool tech editorial (tech), dramatic action (gaming), minimalist magazine (editorial).
+3. Replicate Flux Schnell generates **4 different** style-specific backgrounds in parallel (one per style, each $0.003 → $0.012 total). Prompts are tuned per style: warm lifestyle (vlog), cool tech editorial (tech), dramatic action (gaming), print-magazine cover (magazine).
 4. Satori composes 4 styled thumbnails — each style overlays its Japanese text on **its own** AI background.
 5. The 5th is a "keyword spotlight": Sharp tiles the 4 different raw backgrounds as a 2×2 grid, then Satori overlays ONE big centered keyword.
 6. Each card also exposes the **raw image** (no overlay) for download — uploaded as `raw-{n}.png`. The 5th's raw is the same 2×2 tile minus the keyword.
@@ -79,14 +79,12 @@ To run locally: `vercel env pull .env.local --environment=production --yes` (aft
 
 The 4 base styles (in `lib/thumbnail-compose.ts`):
 
-1. **vlog** — Center serif title with thin top/bottom lines. Lifestyle vibe.
+1. **vlog** — White "VLOG" pill kicker + big centered sans title. Lifestyle vibe.
 2. **tech** — Left-aligned heavy black sans with right-fade gradient panel. Tutorial vibe.
-3. **gaming** — Bottom huge impact title, skewed -6°, red shadow. Action vibe.
-4. **editorial** — Bottom translucent dark bar with subtle serif. Calm/magazine vibe.
+3. **gaming** — Yellow bottom title with thick black outline + red drop shadow, skewed -6°. Top-right rotated red "ACTION!" stamp. Manga / comic-book vibe.
+4. **magazine** — Top-left red kicker rule + "FEATURE" label, big left-aligned serif display title, bottom-left "QUICKTHUMB" brand mark. Print-magazine cover vibe (Vogue / TIME / GQ feel). Replaced the older anime / editorial slot on 2026-05-25.
 
 5th (auto-generated): **Keyword spotlight** — the raw text-free background tiled 2×2 (640×360 each) with ONE big keyword centered on top (extracted from the title via `extractKeyword()` in `lib/thumbnail-compose.ts`). White heavy sans on a radial vignette.
-
-User feedback as of 2026-05-18: vlog and editorial feel weakest, gaming is best. Ideas floated: replace editorial with proper magazine style, make gaming more comical, add a simple template style for post-editing. Not implemented yet.
 
 ## Critical Gotchas (Learn from past pain)
 
@@ -125,6 +123,11 @@ When account balance is under $5, Replicate enforces `burst-1` — only one in-f
 ### 6. Vercel function timeout
 Generation takes ~30-50s end-to-end. Route has `export const maxDuration = 60` to allow this. Free Vercel plan limit is 60s, Pro is 300s.
 
+### 7. Flux scribbles fake Japanese characters when CJK appears in the prompt
+Flux Schnell tries to render any CJK / kana / fullwidth glyphs it sees in the prompt as visible "Japanese-ish" text in the scene — on signs, T-shirts, posters, store fronts. The negative prompt alone does not stop this; the only reliable fix is to **not** put CJK in the prompt.
+
+**Solution** (`app/api/generate/route.ts`): `stripCJK()` removes all CJK / fullwidth chars from title / channel / description before they're injected into the Flux prompt. If the title becomes shorter than 3 chars after stripping, the prompt uses the generic placeholder `"the subject"` instead. The description is dropped wholesale if it contained any CJK (partial-stripping leaves incoherent English). The negative prompt also explicitly lists `NO Japanese characters, NO kanji, NO hiragana, NO katakana, NO Asian text` etc. as backup.
+
 ## Decisions Already Made (don't re-litigate)
 
 - **A option** chosen (4 separate AI images per style, parallel) over B option (1 shared bg). Cost moved from $0.003 → $0.012/gen, but each style now gets a visually appropriate scene. Replicate rate-limit OK above $5 balance.
@@ -136,17 +139,16 @@ Generation takes ~30-50s end-to-end. Route has `export const maxDuration = 60` t
 
 ## Open Questions / Ideas Not Yet Decided
 
-- Should the 4 base styles be replaced/improved? User wants: (a) magazine style instead of editorial, (b) more comical gaming, (c) a simple "editable template" style. Not implemented.
+- Add a "simple editable template" style (5th editable slot for users who want to post-edit themselves)?
 - Stripe Pro plan pricing — leaning toward $9-19/month for 150 generations but not finalized.
 - Should we add OAuth to upload directly to user's YouTube channel? Big scope, defer.
 
 ## Next Tasks (prioritized)
 
-1. **Tune the 4 style prompts** — see `buildStylePrompt()` in `app/api/generate/route.ts`. Now generates 4 different bgs in parallel; verify each style yields visually distinct results.
-2. **Iterate the 4 base styles (overlays)** based on user's feedback above (vlog/editorial weakest, gaming best, magazine-style replacement idea).
-3. **Persist raw URLs in DB** — `generations.thumbnail_urls` currently stores only composed URLs. Raw image URLs are only returned in the immediate API response; add a column if past-generation re-download is needed.
-4. **Implement Stripe Pro plan** (subscription, webhook to update profiles.plan + generations_limit, customer portal).
-5. **Launch** — X, Reddit (r/SideProject, r/SaaS), Indie Hackers, possibly Product Hunt.
+1. **Verify the 2026-05-25 style refresh** — new magazine slot, new vlog pill kicker, gaming yellow + ACTION! stamp, and CJK stripping in the Flux prompt. Watch real generations and confirm Japanese videos no longer get scribbled fake characters.
+2. **Persist raw URLs in DB** — `generations.thumbnail_urls` currently stores only composed URLs. Raw image URLs are only returned in the immediate API response; add a column if past-generation re-download is needed.
+3. **Implement Stripe Pro plan** (subscription, webhook to update profiles.plan + generations_limit, customer portal).
+4. **Launch** — X, Reddit (r/SideProject, r/SaaS), Indie Hackers, possibly Product Hunt.
 
 ## Workflow
 

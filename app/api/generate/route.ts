@@ -25,7 +25,19 @@ export const maxDuration = 60;
 export const runtime = 'nodejs';
 
 const NEGATIVE_PROMPT =
-  'NO text, NO letters, NO words, NO captions, NO logos, NO writing, NO glyphs, NO numbers, NO signs, NO screens or monitors displaying any characters, NO fake inscriptions, NO subtitles';
+  'NO text, NO letters, NO words, NO captions, NO logos, NO writing, NO glyphs, NO numbers, NO signs, NO screens or monitors displaying any characters, NO fake inscriptions, NO subtitles, NO Japanese characters, NO kanji, NO hiragana, NO katakana, NO Chinese characters, NO Korean characters, NO Asian text, NO scribbles, NO calligraphy, NO posters, NO banners, NO street signs, NO shop fronts, NO book covers, NO newspaper text, NO graffiti, NO billboards';
+
+// CJK / fullwidth / kana ranges — anything Flux will try to render as fake
+// "Japanese-ish" glyphs if it sees it in the prompt.
+const CJK_RANGE = /[　-鿿豈-﫿＀-￯]/g;
+
+function stripCJK(s: string): string {
+  return s.replace(CJK_RANGE, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function hasCJK(s: string): boolean {
+  return /[　-鿿豈-﫿＀-￯]/.test(s);
+}
 
 // Strip URLs, hashtags, "subscribe" boilerplate so a short context snippet of
 // the description can be safely fed to Flux without crowding the prompt.
@@ -47,19 +59,23 @@ function buildStylePrompt(
   channel: string,
   style: ThumbnailStyle
 ): string {
-  const cleanedTitle = cleanTitle(title);
-  const safeTitle = cleanedTitle.replace(/["]/g, '').slice(0, 120);
-  const safeChannel = channel.replace(/["]/g, '').slice(0, 60);
-  const ctx = summarizeDescription(description, 200);
+  // Strip CJK from every user-supplied bit BEFORE it touches the prompt —
+  // Flux Schnell loves to scribble fake Japanese characters on signs / shirts
+  // whenever it sees CJK in its input.
+  const cleanedTitle = stripCJK(cleanTitle(title)).replace(/["]/g, '').slice(0, 120);
+  const subjectPhrase = cleanedTitle.length >= 3 ? `"${cleanedTitle}"` : 'the subject';
+  const safeChannel = stripCJK(channel).replace(/["]/g, '').slice(0, 60);
   const channelPart = safeChannel ? ` from a YouTube video by "${safeChannel}"` : '';
-  const ctxPart = ctx ? ` Context from the video description: ${ctx}.` : '';
+  const ctxRaw = summarizeDescription(description, 200);
+  // If description has any CJK, drop it entirely — partial-stripping leaves
+  // an incoherent english fragment that doesn't help Flux.
+  const safeCtx = hasCJK(ctxRaw) ? '' : ctxRaw;
+  const ctxPart = safeCtx ? ` Context from the video description: ${safeCtx}.` : '';
   const tail = `${NEGATIVE_PROMPT}. 16:9 aspect ratio.`;
 
-  // Photo-style topic prefix shared by the 3 photographic styles.
-  const photoTopic = `A photographic scene visibly tied to the topic of "${safeTitle}"${channelPart}, with a clear hero subject related to the topic.${ctxPart} High quality, photorealistic.`;
-
-  // Anime-style topic prefix for the illustration style.
-  const animeTopic = `A high-quality contemporary anime / manga illustration of a scene visibly tied to the topic of "${safeTitle}"${channelPart}, with a clear hero subject related to the topic.${ctxPart}`;
+  // Photo-style topic prefix shared by all 4 styles. The "plain composition"
+  // clause discourages Flux from putting text-bearing props in the scene.
+  const photoTopic = `A photographic scene visibly tied to the topic of ${subjectPhrase}${channelPart}, with a clear hero subject related to the topic.${ctxPart} High quality, photorealistic. Plain composition with no signs, posters, banners, or text-bearing objects in the frame.`;
 
   switch (style) {
     case 'vlog':
@@ -69,9 +85,10 @@ function buildStylePrompt(
       return `${photoTopic} Shot as a sleek modern editorial portrait or hero-object photograph: crisp directional studio lighting, cool palette with cyan and deep navy accents, clean composition, premium magazine feel. The hero subject is a person or central object related to the topic — NOT a computer, NOT a monitor, NOT a desk setup, NOT a phone screen. Subject biased right, left side slightly darker for overlay text. ${tail}`;
     case 'gaming':
       return `${photoTopic} Shot as a cinematic high-energy moment: dramatic dark lighting with vibrant red and neon accents, deep blacks, strong rim light, intense atmosphere, hero shot of the topic subject. Bold action vibe with comic-book energy. ${tail}`;
-    case 'editorial':
-      // Anime/manga illustration aesthetic — the only NON-photorealistic style.
-      return `${animeTopic} Rendered as a polished cel-shaded anime illustration: clean vector-style lineart, vibrant but tasteful colors, dramatic composition, contemporary Japanese magazine-cover aesthetic. The hero subject is clearly drawn and prominent in the frame. Hand-drawn anime artwork, NOT a photograph. ${tail}`;
+    case 'magazine':
+      // Print-magazine cover energy — hero subject biased right, negative
+      // space top-left where the kicker + display title will land.
+      return `${photoTopic} Shot as a high-end print-magazine cover photograph (Vogue / TIME / GQ / National Geographic feel): refined editorial styling, rich tonal palette with one strong accent color, deliberate negative space at the TOP-LEFT of the frame for cover type, hero subject biased to the right two-thirds of the frame. Premium curated composition, NOT casual snapshot. ${tail}`;
   }
 }
 

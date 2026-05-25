@@ -232,20 +232,22 @@ function wrapTitle(title: string, targetCharsPerLine: number, maxLines: number):
 
 // ---- Style definitions ------------------------------------------------------
 
-export type ThumbnailStyle = 'vlog' | 'tech' | 'gaming' | 'editorial';
+export type ThumbnailStyle = 'vlog' | 'tech' | 'gaming' | 'magazine';
 
 export const STYLE_DESCRIPTIONS: Record<ThumbnailStyle, string> = {
   vlog: 'Lifestyle / Vlog style — center serif title with sub-tag bars',
   tech: 'Tech / How-to style — left text, right subject',
   gaming: 'Gaming / Impact style — huge bottom title with red shadow',
-  editorial: 'Anime / Illustration — cel-shaded manga aesthetic, title bar at bottom',
+  magazine: 'Magazine cover — top kicker + big serif display title on a hero photo',
 };
 
 const h = React.createElement;
 
 function buildVlogElement(title: string, bgDataUrl: string): React.ReactElement {
-  const lines = wrapTitle(title, 10, 2);
-  const fontSize = lines.length === 1 ? 120 : 96;
+  // Modern vlog: small white "VLOG" pill kicker, then a big bold sans title.
+  // Replaces the old thin-keyline serif look (felt weak per user feedback).
+  const lines = wrapTitle(title, 11, 2);
+  const fontSize = lines.length === 1 ? 112 : 88;
 
   return h(
     'div',
@@ -276,27 +278,7 @@ function buildVlogElement(title: string, bgDataUrl: string): React.ReactElement 
         width: '100%',
         height: '100%',
         background:
-          'linear-gradient(to bottom, rgba(0,0,0,0.45), rgba(0,0,0,0.10) 50%, rgba(0,0,0,0.55))',
-      },
-    }),
-    h('div', {
-      style: {
-        position: 'absolute',
-        top: 198,
-        left: 240,
-        width: 800,
-        height: 2,
-        background: 'rgba(255,255,255,0.9)',
-      },
-    }),
-    h('div', {
-      style: {
-        position: 'absolute',
-        top: 540,
-        left: 240,
-        width: 800,
-        height: 2,
-        background: 'rgba(255,255,255,0.9)',
+          'linear-gradient(to bottom, rgba(0,0,0,0.45), rgba(0,0,0,0.12) 50%, rgba(0,0,0,0.55))',
       },
     }),
     h(
@@ -312,19 +294,50 @@ function buildVlogElement(title: string, bgDataUrl: string): React.ReactElement 
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          fontFamily: 'JpSerifBold',
-          fontWeight: 700,
-          fontSize,
-          color: 'white',
-          textAlign: 'center',
-          textShadow:
-            '0 0 12px rgba(0,0,0,0.85), 0 0 4px rgba(0,0,0,0.95), 4px 4px 0 rgba(0,0,0,0.6)',
           padding: '0 80px',
-          lineHeight: 1.18,
         },
       },
-      ...lines.map((line, i) =>
-        h('div', { key: i, style: { display: 'flex' } }, line)
+      // White rounded pill kicker (think "Daily Vlog" badge).
+      h(
+        'div',
+        {
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            background: 'white',
+            color: '#0f0c29',
+            padding: '10px 26px',
+            borderRadius: 999,
+            fontFamily: 'JpSansBlack',
+            fontWeight: 900,
+            fontSize: 26,
+            letterSpacing: '0.22em',
+            marginBottom: 28,
+          },
+        },
+        'VLOG'
+      ),
+      // Big sans title, centered.
+      h(
+        'div',
+        {
+          style: {
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            fontFamily: 'JpSansBlack',
+            fontWeight: 900,
+            fontSize,
+            color: 'white',
+            textAlign: 'center',
+            lineHeight: 1.12,
+            textShadow:
+              '0 0 14px rgba(0,0,0,0.75), 0 0 4px rgba(0,0,0,0.9), 4px 4px 0 rgba(0,0,0,0.45)',
+          },
+        },
+        ...lines.map((line, i) =>
+          h('div', { key: i, style: { display: 'flex' } }, line)
+        )
       )
     )
   );
@@ -397,8 +410,11 @@ function buildTechElement(title: string, bgDataUrl: string): React.ReactElement 
 }
 
 function buildGamingElement(title: string, bgDataUrl: string): React.ReactElement {
+  // Manga / comic-book vibe: bright yellow title with thick black outline and
+  // a big red drop shadow. Top-right rotated red "ACTION!" stamp adds extra
+  // comical energy without depending on user-supplied art.
   const lines = wrapTitle(title, 12, 2);
-  const fontSize = lines.length === 1 ? 124 : 92;
+  const fontSize = lines.length === 1 ? 128 : 96;
 
   return h(
     'div',
@@ -429,9 +445,35 @@ function buildGamingElement(title: string, bgDataUrl: string): React.ReactElemen
         width: '100%',
         height: '100%',
         background:
-          'linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,0) 50%, rgba(0,0,0,0.9))',
+          'linear-gradient(to bottom, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0) 45%, rgba(0,0,0,0.95) 100%)',
       },
     }),
+    // Top-right red stamp — rotated, yellow text, black border.
+    h(
+      'div',
+      {
+        style: {
+          position: 'absolute',
+          top: 42,
+          right: 48,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: '#dc2626',
+          padding: '10px 22px',
+          transform: 'rotate(-6deg)',
+          border: '4px solid #000',
+          fontFamily: 'JpSansBlack',
+          fontWeight: 900,
+          fontSize: 34,
+          letterSpacing: '0.12em',
+          color: '#fde047',
+          textShadow: '2px 2px 0 #000',
+        },
+      },
+      'ACTION!'
+    ),
+    // Big skewed bottom title — yellow over black outline, red drop shadow.
     h(
       'div',
       {
@@ -447,13 +489,13 @@ function buildGamingElement(title: string, bgDataUrl: string): React.ReactElemen
           fontFamily: 'JpSansBlack',
           fontWeight: 900,
           fontSize,
-          color: 'white',
+          color: '#fde047',
           textAlign: 'center',
           padding: '0 40px',
           lineHeight: 1.05,
           transform: 'skewX(-6deg)',
           textShadow:
-            '6px 6px 0 #c00000, 6px 6px 0 #c00000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000',
+            '8px 8px 0 #c00000, -3px -3px 0 #000, 3px -3px 0 #000, -3px 3px 0 #000, 3px 3px 0 #000, 0 -3px 0 #000, 0 3px 0 #000, -3px 0 0 #000, 3px 0 0 #000',
         },
       },
       ...lines.map((line, i) =>
@@ -463,10 +505,11 @@ function buildGamingElement(title: string, bgDataUrl: string): React.ReactElemen
   );
 }
 
-function buildEditorialElement(title: string, bgDataUrl: string): React.ReactElement {
-  const lines = wrapTitle(title, 14, 2);
-  const fontSize = lines.length === 1 ? 80 : 60;
-  const barHeight = 220;
+function buildMagazineElement(title: string, bgDataUrl: string): React.ReactElement {
+  // Magazine cover: top-left kicker + big serif display title, bottom-left
+  // brand mark. Mimics print editorial covers (Vogue / TIME / GQ feel).
+  const lines = wrapTitle(title, 10, 2);
+  const fontSize = lines.length === 1 ? 100 : 80;
 
   return h(
     'div',
@@ -489,40 +532,104 @@ function buildEditorialElement(title: string, bgDataUrl: string): React.ReactEle
         objectFit: 'cover',
       },
     }),
+    // Soft diagonal darkening over the top-left quadrant so the type stays
+    // legible no matter what the AI bg looks like.
     h('div', {
       style: {
         position: 'absolute',
+        top: 0,
         left: 0,
-        right: 0,
-        bottom: 0,
-        height: barHeight,
-        background: 'rgba(15,12,41,0.78)',
+        width: '72%',
+        height: '85%',
+        background:
+          'linear-gradient(135deg, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.28) 60%, rgba(0,0,0,0) 100%)',
       },
     }),
+    // Kicker (red rule + small all-caps label)
     h(
       'div',
       {
         style: {
           position: 'absolute',
-          left: 0,
-          right: 0,
-          bottom: 0,
-          height: barHeight,
+          top: 60,
+          left: 60,
+          display: 'flex',
+          alignItems: 'center',
+        },
+      },
+      h('div', {
+        style: {
+          width: 48,
+          height: 4,
+          background: '#e11d48',
+          marginRight: 18,
+        },
+      }),
+      h(
+        'div',
+        {
+          style: {
+            fontFamily: 'JpSansBlack',
+            fontWeight: 900,
+            fontSize: 28,
+            color: 'white',
+            letterSpacing: '0.24em',
+          },
+        },
+        'FEATURE'
+      )
+    ),
+    // Big serif display title, left-aligned, restricted to ~60% width so the
+    // hero subject on the right still reads.
+    h(
+      'div',
+      {
+        style: {
+          position: 'absolute',
+          top: 150,
+          left: 60,
+          width: 780,
           display: 'flex',
           flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
+          alignItems: 'flex-start',
           fontFamily: 'JpSerifBold',
           fontWeight: 700,
           fontSize,
           color: 'white',
-          textAlign: 'center',
-          padding: '0 60px',
-          lineHeight: 1.25,
+          lineHeight: 1.1,
+          textShadow:
+            '0 2px 10px rgba(0,0,0,0.7), 0 6px 22px rgba(0,0,0,0.55)',
         },
       },
       ...lines.map((line, i) =>
         h('div', { key: i, style: { display: 'flex' } }, line)
+      )
+    ),
+    // Brand mark, bottom-left.
+    h(
+      'div',
+      {
+        style: {
+          position: 'absolute',
+          bottom: 42,
+          left: 60,
+          display: 'flex',
+          alignItems: 'center',
+        },
+      },
+      h(
+        'div',
+        {
+          style: {
+            fontFamily: 'JpSansBlack',
+            fontWeight: 900,
+            fontSize: 18,
+            color: 'white',
+            letterSpacing: '0.32em',
+            opacity: 0.85,
+          },
+        },
+        'QUICKTHUMB'
       )
     )
   );
@@ -540,8 +647,8 @@ function buildElement(
       return buildTechElement(title, bgDataUrl);
     case 'gaming':
       return buildGamingElement(title, bgDataUrl);
-    case 'editorial':
-      return buildEditorialElement(title, bgDataUrl);
+    case 'magazine':
+      return buildMagazineElement(title, bgDataUrl);
   }
 }
 
@@ -580,7 +687,7 @@ export async function composeThumbnail(
   return Buffer.from(pngData);
 }
 
-export const ALL_STYLES: ThumbnailStyle[] = ['vlog', 'tech', 'gaming', 'editorial'];
+export const ALL_STYLES: ThumbnailStyle[] = ['vlog', 'tech', 'gaming', 'magazine'];
 
 // ---- Quad grid (5th composite) ---------------------------------------------
 
@@ -748,15 +855,15 @@ type AvatarPlacement = {
 };
 
 // Per-style placement: avoid the area each style uses for text.
-// vlog       — text dead-center → avatar bottom-right
-// tech       — left text panel  → avatar bottom-right (right side is photo subject anyway)
-// gaming     — title at bottom  → avatar top-right
-// editorial  — bottom bar 220px → avatar top-right, small
+// vlog      — text dead-center → avatar bottom-right
+// tech      — left text panel  → avatar bottom-right (right side is photo subject anyway)
+// gaming    — title bottom + ACTION! stamp top-right → avatar TOP-LEFT
+// magazine  — title top-left, brand bottom-left → avatar middle-right
 const AVATAR_PLACEMENTS: Record<ThumbnailStyle, AvatarPlacement> = {
   vlog: { diameter: 200, x: 1040, y: 480, ringColor: '#ffffff', ringWidth: 6 },
   tech: { diameter: 240, x: 970, y: 430, ringColor: '#22d3ee', ringWidth: 6 },
-  gaming: { diameter: 260, x: 990, y: 30, ringColor: '#e11d48', ringWidth: 8 },
-  editorial: { diameter: 150, x: 1100, y: 30, ringColor: '#ffffff', ringWidth: 4 },
+  gaming: { diameter: 220, x: 40, y: 40, ringColor: '#e11d48', ringWidth: 8 },
+  magazine: { diameter: 200, x: 1040, y: 460, ringColor: '#e11d48', ringWidth: 6 },
 };
 
 export type AvatarKind = 'face' | 'logo';
