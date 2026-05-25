@@ -235,9 +235,9 @@ function wrapTitle(title: string, targetCharsPerLine: number, maxLines: number):
 export type ThumbnailStyle = 'vlog' | 'tech' | 'gaming' | 'magazine';
 
 export const STYLE_DESCRIPTIONS: Record<ThumbnailStyle, string> = {
-  vlog: 'Lifestyle / Vlog style — center serif title with sub-tag bars',
-  tech: 'Tech / How-to style — left text, right subject',
-  gaming: 'Gaming / Impact style — huge bottom title with red shadow',
+  vlog: 'Lifestyle / Vlog — white "VLOG" pill kicker + big centered sans title',
+  tech: 'Tech / How-to — left text panel, hero subject on the right',
+  gaming: 'Gaming / Manga — yellow title with thick outline + red drop shadow, "ACTION!" stamp',
   magazine: 'Magazine cover — top kicker + big serif display title on a hero photo',
 };
 

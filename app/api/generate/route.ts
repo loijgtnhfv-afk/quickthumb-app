@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import Replicate from 'replicate';
+import Anthropic from '@anthropic-ai/sdk';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import {
   composeThumbnail,
@@ -37,6 +38,69 @@ function stripCJK(s: string): string {
 
 function hasCJK(s: string): boolean {
   return /[　-鿿豈-﫿＀-￯]/.test(s);
+}
+
+// ---- LLM translation -------------------------------------------------------
+// Flux Schnell scribbles fake "Japanese-ish" text on any sign/poster/screen
+// it draws when the prompt contains CJK characters. Stripping CJK leaves the
+// prompt with no topic signal, so Flux falls back to generic Asian street
+// scenes (which then naturally contain signage = fake glyphs). The fix is to
+// TRANSLATE the title/channel/desc into English up front. Flux can render
+// English text reasonably, so even if it adds signage, it stays coherent.
+
+interface EnglishContext {
+  title: string;
+  channel: string;
+  topic: string;
+}
+
+async function translateContext(
+  title: string,
+  channel: string,
+  description: string
+): Promise<EnglishContext | null> {
+  // If nothing is CJK, the original is already a good Flux prompt — skip the
+  // call entirely to save latency + cost.
+  if (!hasCJK(title) && !hasCJK(channel) && !hasCJK(description)) {
+    return null;
+  }
+  if (!process.env.ANTHROPIC_API_KEY) {
+    console.warn('ANTHROPIC_API_KEY not set — falling back to stripCJK only');
+    return null;
+  }
+  try {
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const msg = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 300,
+      messages: [
+        {
+          role: 'user',
+          content: `Translate and summarize this YouTube video metadata into clean English suitable for an AI image generation prompt. Be concise, visual, and prefer concrete nouns.
+
+Title: ${title}
+Channel: ${channel}
+Description (first 400 chars): ${(description || '').slice(0, 400)}
+
+Reply with ONLY this JSON, no preamble, no code fences:
+{"title":"<short english title, max 12 words>","channel":"<short english channel name, max 6 words>","topic":"<one-sentence english description of what the video is visually about, max 20 words>"}`,
+        },
+      ],
+    });
+    const text = msg.content[0]?.type === 'text' ? msg.content[0].text.trim() : '';
+    // Tolerate a code fence in case the model wraps the JSON despite the instruction.
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('No JSON object in LLM response');
+    const parsed = JSON.parse(jsonMatch[0]);
+    return {
+      title: stripCJK(String(parsed.title || '')).slice(0, 120),
+      channel: stripCJK(String(parsed.channel || '')).slice(0, 60),
+      topic: stripCJK(String(parsed.topic || '')).slice(0, 240),
+    };
+  } catch (err) {
+    console.warn('LLM translation failed (continuing with stripCJK fallback):', err);
+    return null;
+  }
 }
 
 // Strip URLs, hashtags, "subscribe" boilerplate so a short context snippet of
@@ -177,8 +241,16 @@ export async function POST(request: NextRequest) {
     }
 
     const meta = await fetchVideoMetadata(videoId);
+    // If the metadata is CJK, translate it to English once before fanning out
+    // to the 4 style prompts. Falls back to original strings (which then get
+    // stripCJK'd inside buildStylePrompt) if the LLM call fails or the API
+    // key is missing.
+    const en = await translateContext(meta.title, meta.channelTitle, meta.description);
+    const promptTitle = en ? en.title : meta.title;
+    const promptChannel = en ? en.channel : meta.channelTitle;
+    const promptDescription = en ? en.topic : meta.description;
     const stylePrompts = ALL_STYLES.map((s) =>
-      buildStylePrompt(meta.title, meta.description, meta.channelTitle, s)
+      buildStylePrompt(promptTitle, promptDescription, promptChannel, s)
     );
     // Shorter, cleaner headline for the visible overlay (strips
     // "(4K Remaster)", "www", etc. and limits to a punchy ~24 chars).
