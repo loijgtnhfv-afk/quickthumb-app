@@ -62,6 +62,9 @@ references/                 — reference thumbnails (gitignored images) + descr
   descriptors.json          — auto-generated Vision-extracted style cues (committed)
 scripts/
   extract-style-descriptors.ts  — `npm run extract-descriptors` (needs ANTHROPIC_API_KEY)
+  collect-trending-thumbs.ts    — `npm run collect-trending` (needs YOUTUBE_API_KEY)
+.github/workflows/
+  refresh-descriptors.yml       — weekly cron: collect → extract → commit descriptors.json
 package.json
 ```
 

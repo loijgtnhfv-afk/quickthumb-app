@@ -49,12 +49,33 @@ generation does NOT need it — it just reads the resulting JSON.
 - After the trending-thumbs auto-collector (planned) has dropped fresh
   examples
 
-## Trending-thumbs auto-collector (planned)
+## Trending-thumbs auto-collector
 
-A separate GitHub Actions cron will hit YouTube Data API daily for
-`chart=mostPopular&regionCode=JP` (and `US`), classify each result by
-`categoryId`, and drop the high-res thumbnail into the matching style
-folder. That keeps the reference corpus self-updating.
+Implemented as a weekly GitHub Actions cron — `.github/workflows/refresh-descriptors.yml`.
+
+Every Monday 02:00 UTC (and on-demand via `workflow_dispatch`) the workflow:
+
+1. Hits YouTube Data API v3 for `chart=mostPopular` in JP + US.
+2. Classifies each video by `snippet.categoryId` (see `scripts/collect-trending-thumbs.ts`):
+   gaming → `gaming/`, people&blogs / entertainment / howto → `vlog/`,
+   education / sci-tech → `tech/`, film / music → `magazine/`.
+3. Downloads up to 8 maxres thumbs per style as `trending-<region>-<videoId>.jpg`.
+   Old `trending-*` files are removed first so the folder never bloats.
+4. Re-runs `extract-descriptors`.
+5. If `descriptors.json` changed, the workflow auto-commits and pushes
+   back ("chore: refresh style descriptors...").
+
+To run the whole pipeline locally instead of waiting for cron:
+
+```powershell
+$env:YOUTUBE_API_KEY="..."
+$env:ANTHROPIC_API_KEY="sk-ant-..."
+npm run refresh-references
+```
+
+GitHub Actions secrets needed (Settings → Secrets and variables → Actions):
+- `YOUTUBE_API_KEY` (already configured in Vercel; copy the same value here)
+- `ANTHROPIC_API_KEY`
 
 ## Gitignore policy
 

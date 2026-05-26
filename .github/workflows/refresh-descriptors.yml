@@ -1,0 +1,55 @@
+name: Refresh style descriptors from trending YouTube thumbs
+
+on:
+  schedule:
+    # Mondays 02:00 UTC = Mondays 11:00 JST. Weekly is enough — trending
+    # corpus + Vision call together cost ~$0.10/run and trends don't
+    # shift dramatically day-to-day.
+    - cron: '0 2 * * 1'
+  workflow_dispatch:
+
+# We push the updated descriptors.json back to the repo, so the workflow
+# needs write access to contents.
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install deps
+        run: npm ci || npm install
+
+      - name: Collect trending thumbs (JP + US)
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: npm run collect-trending
+
+      - name: Extract style descriptors via Claude Vision
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: npm run extract-descriptors
+
+      - name: Commit descriptors.json if changed
+        run: |
+          git config user.name "quickthumb-bot"
+          git config user.email "quickthumb-bot@users.noreply.github.com"
+          # Only descriptors.json is tracked — trending image files are
+          # gitignored, so they won't pollute the commit even though they
+          # live in the workspace after collect-trending ran.
+          if git diff --quiet -- references/descriptors.json; then
+            echo "No descriptor changes — nothing to commit."
+            exit 0
+          fi
+          git add references/descriptors.json
+          git commit -m "chore: refresh style descriptors from this week's trending thumbs"
+          git push

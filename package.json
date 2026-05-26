@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "extract-descriptors": "tsx scripts/extract-style-descriptors.ts"
+    "extract-descriptors": "tsx scripts/extract-style-descriptors.ts",
+    "collect-trending": "tsx scripts/collect-trending-thumbs.ts",
+    "refresh-references": "npm run collect-trending && npm run extract-descriptors"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",
