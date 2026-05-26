@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import Replicate from 'replicate';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import descriptorsJson from '@/references/descriptors.json';
 import {
   composeThumbnail,
   composeQuadGrid,
@@ -27,6 +28,20 @@ export const runtime = 'nodejs';
 
 const NEGATIVE_PROMPT =
   'NO text, NO letters, NO words, NO captions, NO logos, NO writing, NO glyphs, NO numbers, NO signs, NO screens or monitors displaying any characters, NO fake inscriptions, NO subtitles, NO Japanese characters, NO kanji, NO hiragana, NO katakana, NO Chinese characters, NO Korean characters, NO Asian text, NO scribbles, NO calligraphy, NO posters, NO banners, NO street signs, NO shop fronts, NO book covers, NO newspaper text, NO graffiti, NO billboards';
+
+// Style descriptors extracted from real reference thumbnails (run
+// `npm run extract-descriptors` to refresh after dropping images into
+// references/<style>/). Empty / missing keys are fine — buildStylePrompt
+// just skips the append in that case.
+type StyleDescriptor = { descriptor: string; imageCount: number; updatedAt: string };
+const descriptors = descriptorsJson as Partial<Record<ThumbnailStyle, StyleDescriptor>>;
+function descriptorClauseFor(style: ThumbnailStyle): string {
+  const entry = descriptors[style];
+  if (!entry || !entry.descriptor) return '';
+  // Prefix as a clear "look like..." instruction so Flux treats it as
+  // additional style guidance rather than free-form scene content.
+  return ` Visual style reference (match this look): ${entry.descriptor}`;
+}
 
 // CJK / fullwidth / kana ranges — anything Flux will try to render as fake
 // "Japanese-ish" glyphs if it sees it in the prompt.
@@ -150,18 +165,20 @@ function buildStylePrompt(
 
   const photoTopic = `A photographic scene visibly tied to the topic of ${subjectPhrase}${channelPart}, with a clear hero subject related to the topic.${ctxPart} High quality, photorealistic. Plain composition with no signs, posters, banners, or text-bearing objects in the frame.${cleanGuard}`;
 
+  const refClause = descriptorClauseFor(style);
+
   switch (style) {
     case 'vlog':
-      return `${photoTopic} Shot as warm intimate lifestyle photography: soft golden-hour daylight, shallow depth of field, cream and peach palette, slightly blurred background, cozy personal vlog aesthetic. The subject is prominent and recognizable. ${tail}`;
+      return `${photoTopic} Shot as warm intimate lifestyle photography: soft golden-hour daylight, shallow depth of field, cream and peach palette, slightly blurred background, cozy personal vlog aesthetic. The subject is prominent and recognizable.${refClause} ${tail}`;
     case 'tech':
       // Avoid screens/monitors — Flux loves to scribble fake glyphs on them.
-      return `${photoTopic} Shot as a sleek modern editorial portrait or hero-object photograph: crisp directional studio lighting, cool palette with cyan and deep navy accents, clean composition, premium magazine feel. The hero subject is a person or central object related to the topic — NOT a computer, NOT a monitor, NOT a desk setup, NOT a phone screen. Subject biased right, left side slightly darker for overlay text. ${tail}`;
+      return `${photoTopic} Shot as a sleek modern editorial portrait or hero-object photograph: crisp directional studio lighting, cool palette with cyan and deep navy accents, clean composition, premium magazine feel. The hero subject is a person or central object related to the topic — NOT a computer, NOT a monitor, NOT a desk setup, NOT a phone screen. Subject biased right, left side slightly darker for overlay text.${refClause} ${tail}`;
     case 'gaming':
-      return `${photoTopic} Shot as a cinematic high-energy moment: dramatic dark lighting with vibrant red ${enforceCleanBackdrop ? 'RIM LIGHT (no neon signs)' : 'and neon accents'}, deep blacks, strong rim light, intense atmosphere, hero shot of the topic subject. Bold action vibe with comic-book energy. ${tail}`;
+      return `${photoTopic} Shot as a cinematic high-energy moment: dramatic dark lighting with vibrant red ${enforceCleanBackdrop ? 'RIM LIGHT (no neon signs)' : 'and neon accents'}, deep blacks, strong rim light, intense atmosphere, hero shot of the topic subject. Bold action vibe with comic-book energy.${refClause} ${tail}`;
     case 'magazine':
       // Print-magazine cover energy — hero subject biased right, negative
       // space top-left where the kicker + display title will land.
-      return `${photoTopic} Shot as a high-end print-magazine cover photograph (Vogue / TIME / GQ / National Geographic feel): refined editorial styling, rich tonal palette with one strong accent color, deliberate negative space at the TOP-LEFT of the frame for cover type, hero subject biased to the right two-thirds of the frame. Premium curated composition, NOT casual snapshot. ${tail}`;
+      return `${photoTopic} Shot as a high-end print-magazine cover photograph (Vogue / TIME / GQ / National Geographic feel): refined editorial styling, rich tonal palette with one strong accent color, deliberate negative space at the TOP-LEFT of the frame for cover type, hero subject biased to the right two-thirds of the frame. Premium curated composition, NOT casual snapshot.${refClause} ${tail}`;
   }
 }
 

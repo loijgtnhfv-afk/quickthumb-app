@@ -34,3 +34,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# reference thumbnails — folder structure + descriptors.json are tracked,
+# the individual image files are not (heavy + potential copyright concerns)
+references/*/*.png
+references/*/*.jpg
+references/*/*.jpeg
+references/*/*.webp

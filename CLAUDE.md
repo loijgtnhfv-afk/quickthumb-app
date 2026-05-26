@@ -13,6 +13,8 @@ AI-powered YouTube thumbnail generator SaaS. Paste a YouTube URL, get 5 styled t
 
 ヒヅル (loijgtnhfv@gmail.com). Solo founder, Japanese-speaking. Communicates casually in Japanese. Visual-first feedback (sends screenshots). Cost-conscious. Prefers brief replies and concrete next steps over long explanations.
 
+**Target market**: BOTH US/global and Japan, not Japan-only despite the owner being Japanese-speaking. Decision on 2026-05-26 — UI is fully i18n'd (en + ja) so the same codebase serves both markets. See `i18n/request.ts`, `messages/`, and the EN/JA toggle in the page header. Don't strip the English path; don't default localization decisions to Japanese.
+
 ## Architecture — "A option" (4 style-specific bgs, parallel)
 
 1. User pastes YouTube URL
@@ -40,16 +42,26 @@ AI-powered YouTube thumbnail generator SaaS. Paste a YouTube URL, get 5 styled t
 
 ```
 app/
-  page.tsx                  — landing page with URL form + thumbnail results
+  page.tsx                  — landing page (i18n via next-intl, EN/JA toggle)
   api/generate/route.ts     — main API endpoint (POST /api/generate)
-  auth/                     — Supabase Auth signup/login pages
-  layout.tsx                — root layout with metadata
+  api/locale/route.ts       — sets the NEXT_LOCALE cookie for i18n toggle
+  auth/                     — Supabase Auth signup/login pages (i18n)
+  layout.tsx                — root layout, server-resolves locale + NextIntlClientProvider
 lib/
-  thumbnail-compose.ts      — Satori-based composition + composeQuadGrid
+  thumbnail-compose.ts      — Satori-based composition + composeQuadGrid + STYLE_KICKERS
   supabase/
     server.ts               — Supabase clients (createClient + createServiceClient)
 middleware.ts               — auth middleware
-next.config.mjs             — IMPORTANT: serverExternalPackages + outputFileTracingIncludes
+next.config.mjs             — IMPORTANT: serverExternalPackages + outputFileTracingIncludes + next-intl plugin
+i18n/request.ts             — locale resolution (cookie > Accept-Language > 'en') for next-intl
+messages/
+  en.json                   — English UI strings
+  ja.json                   — Japanese UI strings
+references/                 — reference thumbnails (gitignored images) + descriptors.json
+  vlog/ tech/ gaming/ magazine/ — drop 5-15 reference images per style here
+  descriptors.json          — auto-generated Vision-extracted style cues (committed)
+scripts/
+  extract-style-descriptors.ts  — `npm run extract-descriptors` (needs ANTHROPIC_API_KEY)
 package.json
 ```
 
