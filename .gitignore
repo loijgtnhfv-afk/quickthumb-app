@@ -41,3 +41,4 @@ references/*/*.png
 references/*/*.jpg
 references/*/*.jpeg
 references/*/*.webp
+.env*
