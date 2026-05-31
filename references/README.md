@@ -46,24 +46,32 @@ generation does NOT need it — it just reads the resulting JSON.
 - After adding ≥5 new images to a folder
 - Periodically (monthly?) so the style stays current with what's
   performing on YouTube right now
-- After the trending-thumbs auto-collector (planned) has dropped fresh
-  examples
+- After the auto-collector has dropped fresh examples (runs weekly)
 
-## Trending-thumbs auto-collector
+## Auto-collector (per-style search)
 
 Implemented as a weekly GitHub Actions cron — `.github/workflows/refresh-descriptors.yml`.
 
 Every Monday 02:00 UTC (and on-demand via `workflow_dispatch`) the workflow:
 
-1. Hits YouTube Data API v3 for `chart=mostPopular` in JP + US.
-2. Classifies each video by `snippet.categoryId` (see `scripts/collect-trending-thumbs.ts`):
-   gaming → `gaming/`, people&blogs / entertainment / howto → `vlog/`,
-   education / sci-tech → `tech/`, film / music → `magazine/`.
-3. Downloads up to 8 maxres thumbs per style as `trending-<region>-<videoId>.jpg`.
-   Old `trending-*` files are removed first so the folder never bloats.
-4. Re-runs `extract-descriptors`.
-5. If `descriptors.json` changed, the workflow auto-commits and pushes
-   back ("chore: refresh style descriptors...").
+1. For each style, runs that style's search queries against YouTube Data API
+   v3 `search.list` (type=video, order=viewCount, published within the last 18
+   months). See `STYLE_QUERIES` in `scripts/collect-trending-thumbs.ts`.
+2. Fetches `videos.list` for the candidate ids to get maxres thumbnails +
+   view counts, ranks by views, keeps the top 8 per style.
+3. Downloads them as `trending-<videoId>.jpg`. Old `trending-*` files are
+   removed first so the folder never bloats; hand-curated images (anything not
+   prefixed `trending-`) are preserved.
+4. Re-runs `extract-descriptors` (which guards against refusals /
+   meta-commentary — bad output is dropped, not stored).
+5. If `descriptors.json` changed, the workflow auto-commits and pushes back.
+
+> Why per-style **search** and not the `chart=mostPopular` trending list:
+> trending in JP/US is mostly music videos and movie trailers, and YouTube's
+> coarse `categoryId` doesn't map to our styles — that fed off-style images
+> into the vlog/tech buckets (Claude Vision then refused to extract a "cozy
+> vlog" style from anime-MV thumbnails). Searching each style's own queries,
+> ordered by views, yields on-style, proven-high-performing references.
 
 To run the whole pipeline locally instead of waiting for cron:
 
