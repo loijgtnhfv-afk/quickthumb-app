@@ -1,1 +1,17 @@
-{}
+{
+  "vlog": {
+    "descriptor": "I need to point out that the thumbnails you've shared don't appear to represent the \"vlog / cozy lifestyle / day in my life\" category. They actually show: an anime virtual idol group thumbnail (爆裂愛してる), a K-pop or J-pop boy group MV thumbnail (Celebrate), an anime music/game art thumbnail (Grab Stories Next Story), a J-pop boy group MV thumbnail (Samba de Night Fever by ONE N' ONLY), a Japanese idol live performance thumbnail (Cutie Street), a Marvel Studios Avengers Doomsday fan-made or promotional thumbnail, and a House of the Dragon HBO Max official trailer thumbnail.\n\nTo give you accurate style descriptors for your Flux prompt, could you share thumbnails that actually represent cozy lifestyle vlogs or \"day in my life\" content? That way the extracted style will genuinely match your target category.",
+    "imageCount": 7,
+    "updatedAt": "2026-05-31T11:04:39.137Z"
+  },
+  "gaming": {
+    "descriptor": "bold saturated color palette dominated by teals, magentas, purples, and neon greens against clean white or dark atmospheric backgrounds, high-contrast lighting with dramatic rim light and chromatic energy effects, dynamic foreground subjects centered or slightly off-center at large scale, shallow depth of field with blurred supporting elements pushed to edges, energetic manga-influenced composition with explosive radial geometry and floating decorative objects, glossy 3D rendered motifs mixed with flat illustrated characters, exaggerated facial expressions conveying shock or excitement, cinematic vignetting around borders, particle effects and glowing aura trails, playful yet intense mood balancing kawaii softness with competitive edge",
+    "imageCount": 8,
+    "updatedAt": "2026-05-31T11:04:44.886Z"
+  },
+  "magazine": {
+    "descriptor": "high-production editorial aesthetic, clean and intentional composition, subjects framed with confident center or near-center placement, cinematic depth-of-field with softly blurred backgrounds, rich and saturated color palettes contrasted against deep shadows or bright overexposed highlights, dramatic studio-quality lighting with deliberate directional sources, polished glossy finish reminiscent of magazine cover photography, strong visual hierarchy between foreground subject and background elements, moody atmospheric haze or bokeh, sharp focus on faces or key subjects, bold color blocking, professional color grading with cool or warm tonal dominance, sleek contemporary visual language",
+    "imageCount": 8,
+    "updatedAt": "2026-05-31T11:04:51.420Z"
+  }
+}
