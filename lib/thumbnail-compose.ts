@@ -230,6 +230,69 @@ function wrapTitle(title: string, targetCharsPerLine: number, maxLines: number):
   return lines;
 }
 
+// ---- Width-aware adaptive font sizing --------------------------------------
+//
+// wrapTitle() breaks lines by CHARACTER COUNT only, so at a fixed fontSize a
+// "short" CJK line can still be far wider than its box — 11 full-width CJK
+// chars at 84px is ~924px, well past the tech panel's ~660px usable width.
+// When a line overflows, Satori silently RE-WRAPS that <div>{line}</div> onto
+// extra visual lines, producing the ragged 4-line mess. fitFontSize shrinks the
+// font so the WIDEST wrapped line is guaranteed to fit, killing the re-wrap.
+//
+// Widths are estimated in em from per-character advance widths tuned for the
+// heavy Noto Sans/Serif JP faces we ship:
+//   - CJK ideographs / kana / fullwidth forms -> ~1.0em (square glyphs)
+//   - Latin letters / digits / spaces / ASCII -> ~0.58em (proportional)
+// Only fontSize changes; the line array and lineHeight are left untouched, so
+// a 1-line title stays 1 line (just smaller) — never re-flowed.
+
+// U+3000-9FFF (CJK symbols, kana, CJK Unified incl. Ext-A), U+F900-FAFF
+// (compatibility ideographs), U+FF00-FFEF (fullwidth / halfwidth forms).
+const CJK_FULLWIDTH = /[　-鿿豈-﫿＀-￯]/;
+
+// Hangul (Jamo U+1100-11FF + syllables U+AC00-D7AF) render full-width too but
+// sit in the gap between the CJK_FULLWIDTH subranges, so they need a separate
+// test. (Korean is not a target locale today; this just keeps the width model
+// honest if a KR title is ever pasted.)
+const HANGUL = /[ᄀ-ᇿ가-힯]/;
+
+// Per-character advance width in em, tuned for the heavy 900-weight Noto faces.
+// CJK / Hangul / fullwidth glyphs are square (~1em); among proportional glyphs
+// uppercase and digits run wider than lowercase, and spaces are narrow. Typical
+// mixed-case English averages ~0.55em so normal titles keep their base size,
+// while the uppercase weight stops all-caps headlines under-fitting their box.
+function estimateLineEm(line: string): number {
+  let em = 0;
+  for (const ch of line) {
+    if (CJK_FULLWIDTH.test(ch) || HANGUL.test(ch)) em += 1.0;
+    else if (ch === ' ') em += 0.3;
+    else if (ch >= 'A' && ch <= 'Z') em += 0.7;
+    else em += 0.55;
+  }
+  return em;
+}
+
+/**
+ * Largest fontSize (px) at which EVERY line fits within usableWidthPx, capped
+ * at baseFontSize and floored at minFontSize for legibility. safetyFactor (<1)
+ * leaves headroom so estimate error / kerning never trips a Satori re-wrap.
+ * Only ever shrinks relative to baseFontSize — never grows.
+ */
+export function fitFontSize(
+  lines: string[],
+  usableWidthPx: number,
+  baseFontSize: number,
+  minFontSize = 44,
+  safetyFactor = 0.94
+): number {
+  const widestEm = Math.max(0.0001, ...lines.map(estimateLineEm));
+  const maxFit = (usableWidthPx * safetyFactor) / widestEm;
+  // Clamp the floor to base as well, so a caller passing baseFontSize <
+  // minFontSize still only ever gets <= base (honors the "never grows" doc).
+  const floor = Math.min(minFontSize, baseFontSize);
+  return Math.max(floor, Math.min(baseFontSize, Math.floor(maxFit)));
+}
+
 // ---- Style definitions ------------------------------------------------------
 
 export type ThumbnailStyle = 'vlog' | 'tech' | 'gaming' | 'magazine';
@@ -258,7 +321,8 @@ function buildVlogElement(title: string, bgDataUrl: string): React.ReactElement 
   // Modern vlog: small white pill kicker (style label, not a genre claim),
   // then a big bold sans title. Replaces the old thin-keyline serif look.
   const lines = wrapTitle(title, 11, 2);
-  const fontSize = lines.length === 1 ? 112 : 88;
+  // Centered container is 1280 wide with padding '0 80px' => ~1120px usable.
+  const fontSize = fitFontSize(lines, 1120, lines.length === 1 ? 112 : 88);
   const kicker = STYLE_KICKERS.vlog;
 
   return h(
@@ -357,7 +421,9 @@ function buildVlogElement(title: string, bgDataUrl: string): React.ReactElement 
 
 function buildTechElement(title: string, bgDataUrl: string): React.ReactElement {
   const lines = wrapTitle(title, 11, 2);
-  const fontSize = lines.length === 1 ? 104 : 84;
+  // Left text panel is width:760 with padding '0 50px' => ~660px usable. Long
+  // CJK lines used to overflow this and re-wrap into a ragged 4-line mess.
+  const fontSize = fitFontSize(lines, 660, lines.length === 1 ? 104 : 84);
 
   return h(
     'div',
@@ -426,7 +492,8 @@ function buildGamingElement(title: string, bgDataUrl: string): React.ReactElemen
   // a big red drop shadow. Top-right rotated red "ACTION!" stamp adds extra
   // comical energy without depending on user-supplied art.
   const lines = wrapTitle(title, 12, 2);
-  const fontSize = lines.length === 1 ? 128 : 96;
+  // Bottom title spans left:0/right:0 (1280) with padding '0 40px' => ~1200px.
+  const fontSize = fitFontSize(lines, 1200, lines.length === 1 ? 128 : 96);
 
   return h(
     'div',
@@ -521,7 +588,8 @@ function buildMagazineElement(title: string, bgDataUrl: string): React.ReactElem
   // Magazine cover: top-left kicker + big serif display title, bottom-left
   // brand mark. Mimics print editorial covers (Vogue / TIME / GQ feel).
   const lines = wrapTitle(title, 10, 2);
-  const fontSize = lines.length === 1 ? 100 : 80;
+  // Serif title box is width:780 at left:60 with no horizontal padding => 780px.
+  const fontSize = fitFontSize(lines, 780, lines.length === 1 ? 100 : 80);
 
   return h(
     'div',
@@ -755,16 +823,24 @@ export async function composeQuadGridRaw(bgBuffers: Buffer[]): Promise<Buffer> {
  */
 export async function composeQuadGrid(
   bgBuffers: Buffer[],
-  title: string
+  title: string,
+  customKeyword?: string
 ): Promise<Buffer> {
   const fonts = await loadFonts();
 
   const gridBg = await composeQuadGridRaw(bgBuffers);
   const bgDataUrl = `data:image/png;base64,${gridBg.toString('base64')}`;
 
-  const keyword = extractKeyword(title);
+  // A user-supplied custom overlay is deliberate text — use it verbatim as the
+  // keyword (capped so it can't blow out the box), NOT a keyword mined from the
+  // raw title. Otherwise derive a punchy keyword from the (raw) title.
+  const keyword =
+    customKeyword && customKeyword.trim()
+      ? truncateAtBoundary(customKeyword.trim(), 20)
+      : extractKeyword(title);
   const lines = wrapTitle(keyword, 8, 2);
-  const fontSize = lines.length === 1 ? 156 : 112;
+  // Centered keyword box is 1280 with padding '0 60px' => ~1160px usable.
+  const fontSize = fitFontSize(lines, 1160, lines.length === 1 ? 156 : 112);
 
   const element = h(
     'div',

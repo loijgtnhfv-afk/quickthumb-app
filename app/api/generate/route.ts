@@ -355,8 +355,12 @@ export async function POST(request: NextRequest) {
       // 3) 5th composite: 4 different bgs tiled 2x2 + central keyword.
       // 5th raw: same tile, no keyword. (Avatar is skipped on the quad grid —
       // the centered keyword owns the visual center.)
+      // Quad keyword: if the user typed a custom overlay, use it verbatim;
+      // otherwise pass the RAW meta.title so extractKeyword can split on
+      // 【】 | / : etc. and pick a punchy keyword. (displayTitle already had its
+      // delimiters stripped by extractDisplayTitle — that was the quad bug.)
       const [quadBuffer, quadRawBuffer] = await Promise.all([
-        composeQuadGrid(bgBuffers, displayTitle),
+        composeQuadGrid(bgBuffers, meta.title, customText || undefined),
         composeQuadGridRaw(bgBuffers),
       ]);
 

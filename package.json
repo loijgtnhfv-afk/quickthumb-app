@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "verify:fit": "tsx scripts/verify-fit.ts",
     "extract-descriptors": "tsx scripts/extract-style-descriptors.ts",
     "collect-trending": "tsx scripts/collect-trending-thumbs.ts",
     "refresh-references": "npm run collect-trending && npm run extract-descriptors"
