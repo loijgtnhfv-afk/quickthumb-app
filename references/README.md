@@ -55,8 +55,9 @@ Implemented as a weekly GitHub Actions cron — `.github/workflows/refresh-descr
 Every Monday 02:00 UTC (and on-demand via `workflow_dispatch`) the workflow:
 
 1. For each style, runs that style's search queries against YouTube Data API
-   v3 `search.list` (type=video, order=viewCount, published within the last 18
-   months). See `STYLE_QUERIES` in `scripts/collect-trending-thumbs.ts`.
+   v3 `search.list` (type=video, order=viewCount, duration=medium so Shorts are
+   excluded, published within the last 18 months). See `STYLE_QUERIES` in
+   `scripts/collect-trending-thumbs.ts`.
 2. Fetches `videos.list` for the candidate ids to get maxres thumbnails +
    view counts, ranks by views, keeps the top 8 per style.
 3. Downloads them as `trending-<videoId>.jpg`. Old `trending-*` files are

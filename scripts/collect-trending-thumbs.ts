@@ -102,6 +102,13 @@ async function searchVideoIds(
   url.searchParams.set('q', query);
   url.searchParams.set('type', 'video');
   url.searchParams.set('order', 'viewCount');
+  // Exclude Shorts. order=viewCount is otherwise dominated by vertical 9:16
+  // Shorts (100M+ views), whose maxres thumbnails are pillarboxed (blurred
+  // side panels) — Vision then "learns" a vertical/triptych composition, which
+  // is wrong for our 16:9 landscape thumbnails. videoDuration=medium (4–20 min)
+  // guarantees long-form landscape videos with purpose-designed thumbnails,
+  // since Shorts cap out at ~3 min.
+  url.searchParams.set('videoDuration', 'medium');
   url.searchParams.set('maxResults', String(PER_QUERY));
   url.searchParams.set('publishedAfter', publishedAfter);
   url.searchParams.set('relevanceLanguage', 'en');
