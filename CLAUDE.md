@@ -151,6 +151,7 @@ Flux Schnell tries to render any CJK / kana / fullwidth glyphs it sees in the pr
 - **Satori + Resvg** instead of Sharp's internal resvg (Sharp's renderer ignores @font-face base64 data URLs — invisible text).
 - **Free tier = 5 generations**, then 402 + upgrade prompt.
 - **AI generates only background** (text-free). Japanese title is added via Satori overlay because Flux can't render CJK reliably.
+- **Reference style descriptors are LIVE and auto-refreshing** (activated 2026-05-31). Collected via per-style YouTube **search** — NOT the trending chart, which was too noisy: trending + `categoryId` fed music/movie/Shorts into the vlog/tech buckets and Vision refused. Now `STYLE_QUERIES` per style, `order=viewCount`, `videoDuration=medium` (excludes vertical Shorts whose pillarboxed thumbs taught a wrong vertical/triptych look), gaming pinned to `videoCategoryId=20` (else "let's play"/viewCount pulls kids-edutainment like Sesame Street). Weekly GHA cron `refresh-descriptors.yml` (Mondays): collect → Claude Vision extract → auto-commit `descriptors.json` → Vercel redeploys. `descriptorClauseFor()` in `app/api/generate/route.ts` appends each style's descriptor to its Flux prompt; `extract-descriptors` drops Vision refusals via `isCleanDescriptor`. GH Actions secrets `YOUTUBE_API_KEY` + `ANTHROPIC_API_KEY` are set. Tune queries in `scripts/collect-trending-thumbs.ts`; details in `references/README.md`.
 
 ## Open Questions / Ideas Not Yet Decided
 
