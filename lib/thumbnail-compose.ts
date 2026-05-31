@@ -767,6 +767,60 @@ export async function composeThumbnail(
   return Buffer.from(pngData);
 }
 
+// ---- Face-hero compositing --------------------------------------------------
+//
+// The "face + hook" concept: a cut-out real subject (the creator's avatar with
+// its background removed) placed LARGE as the hero on a clean backdrop, with the
+// style's hook overlaid on top via composeThumbnail(). Each style biases the
+// subject to leave its text zone clear (tech/magazine text is on the left/
+// top-left, gaming/vlog text is centered/bottom, so a right-biased subject keeps
+// the copy readable). Returns a 1280x720 buffer to feed straight into
+// composeThumbnail() as the background.
+const FACE_HERO: Record<ThumbnailStyle, { height: number; inset: number }> = {
+  tech: { height: 712, inset: 24 }, // text on the left panel -> face hard right
+  magazine: { height: 712, inset: 20 }, // kicker/title top-left -> face right
+  gaming: { height: 660, inset: 40 }, // title across the bottom -> slightly smaller, right
+  vlog: { height: 712, inset: 28 }, // centered short hook -> face right
+};
+
+// Clean, subject-less gradient backdrop per style, used in "face mode" where a
+// cut-out real face is the hero (so Flux is skipped). Colors echo each style's
+// mood: warm vlog, cool tech, dark-red gaming, tonal magazine.
+const BACKDROP_COLORS: Record<ThumbnailStyle, [string, string]> = {
+  vlog: ['#caa17a', '#4a3826'],
+  tech: ['#15233b', '#05070d'],
+  gaming: ['#3a0d10', '#080203'],
+  magazine: ['#6b5b4a', '#1c1610'],
+};
+
+export async function styleBackdrop(style: ThumbnailStyle): Promise<Buffer> {
+  const [c1, c2] = BACKDROP_COLORS[style];
+  const svg = `<svg width="1280" height="720" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${c1}"/><stop offset="100%" stop-color="${c2}"/></linearGradient></defs><rect width="1280" height="720" fill="url(#g)"/></svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
+export async function composeFaceHero(
+  backdrop: Buffer,
+  cutout: Buffer,
+  style: ThumbnailStyle
+): Promise<Buffer> {
+  const cfg = FACE_HERO[style];
+  const bd = await sharp(backdrop).resize(1280, 720, { fit: 'cover', position: 'center' }).png().toBuffer();
+  // Fit the cut-out subject inside the canvas (never taller than 720, never
+  // wider than ~1000) and bottom-align it, biased to the right.
+  const subj = await sharp(cutout)
+    .resize({ height: Math.min(cfg.height, 720), width: 1000, fit: 'inside', withoutEnlargement: false })
+    .png()
+    .toBuffer();
+  const m = await sharp(subj).metadata();
+  const w = m.width ?? 560;
+  const h = m.height ?? cfg.height;
+  return sharp(bd)
+    .composite([{ input: subj, top: Math.max(0, 720 - h), left: Math.max(0, 1280 - w - cfg.inset) }])
+    .png()
+    .toBuffer();
+}
+
 export const ALL_STYLES: ThumbnailStyle[] = ['vlog', 'tech', 'gaming', 'magazine'];
 
 // ---- Quad grid (5th composite) ---------------------------------------------
