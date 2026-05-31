@@ -43,8 +43,17 @@ type Style = (typeof STYLES)[number];
 const STYLE_QUERIES: Record<Style, string[]> = {
   vlog: ['day in my life vlog', 'morning routine aesthetic', 'cozy daily vlog'],
   tech: ['tech review', 'software tutorial', 'how it works explained'],
-  gaming: ['gameplay walkthrough', "let's play", 'esports highlights'],
+  gaming: ['gameplay walkthrough', 'gaming highlights', 'esports highlights'],
   magazine: ['cinematic short film', 'fashion editorial', 'celebrity interview portrait'],
+};
+
+// Optional per-style category constraint (YouTube videoCategoryId). Gaming
+// needs it: "gameplay"/"highlights" + order=viewCount otherwise pulls huge
+// kids-edutainment channels (Sesame Street, Ms. Rachel, Bebefinn). Pinning to
+// category 20 (Gaming) keeps the bucket to actual gaming thumbnails. The other
+// styles read cleanly from their queries alone, so they stay unconstrained.
+const STYLE_CATEGORY: Partial<Record<Style, string>> = {
+  gaming: '20',
 };
 
 // Keep at most N reference images per style, so the folder stays curated even
@@ -95,7 +104,8 @@ function publishedAfterIso(): string {
 async function searchVideoIds(
   apiKey: string,
   query: string,
-  publishedAfter: string
+  publishedAfter: string,
+  categoryId?: string
 ): Promise<string[]> {
   const url = new URL('https://www.googleapis.com/youtube/v3/search');
   url.searchParams.set('part', 'snippet');
@@ -113,6 +123,7 @@ async function searchVideoIds(
   url.searchParams.set('publishedAfter', publishedAfter);
   url.searchParams.set('relevanceLanguage', 'en');
   url.searchParams.set('safeSearch', 'moderate');
+  if (categoryId) url.searchParams.set('videoCategoryId', categoryId);
   url.searchParams.set('key', apiKey);
   const res = await fetch(url.toString());
   const json = (await res.json()) as SearchResponse;
@@ -187,7 +198,7 @@ async function collectForStyle(
   const ids = new Set<string>();
   for (const q of queries) {
     try {
-      const found = await searchVideoIds(apiKey, q, publishedAfter);
+      const found = await searchVideoIds(apiKey, q, publishedAfter, STYLE_CATEGORY[style]);
       found.forEach((id) => ids.add(id));
       console.log(`  [${style}] "${q}" → ${found.length} ids`);
     } catch (err) {
