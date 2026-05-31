@@ -85,13 +85,42 @@ const STYLE_BRIEF: Record<Style, string> = {
 };
 
 function buildPrompt(style: Style, count: number): string {
-  return `I'm showing you ${count} reference YouTube thumbnails representative of the "${style}" category — ${STYLE_BRIEF[style]}.
+  return `You are given ${count} real trending YouTube thumbnails grouped under the "${style}" category — ${STYLE_BRIEF[style]}.
 
-Your job: extract the VISUAL STYLE these examples share, as a compact paragraph (around 60–100 words) that I can append to an AI image generation prompt for Flux. The paragraph should describe ONLY style — composition, palette, lighting, mood, subject framing, depth-of-field, typography vibe (if relevant), and any recurring visual motifs.
+Your job: extract the VISUAL STYLE the set shares, as a compact paragraph (around 60–100 words) to append to an AI image-generation prompt for Flux. Describe ONLY style — composition, palette, lighting, mood, subject framing, depth-of-field, typography vibe (if relevant), and recurring visual motifs.
 
-Do NOT describe specific content (e.g. "a person holding a phone"). Do NOT mention text overlays, captions, or any rendered text on the images. Do NOT use lists or bullet points — return one flowing paragraph of prompt-ready descriptors separated by commas.
+These are scraped from whatever is trending right now, so they may NOT perfectly fit the category label. That is expected and fine. Regardless, extract the dominant shared visual treatment. Do NOT refuse, do NOT judge whether the images fit the category, do NOT address me, and do NOT mention the images, the category, or yourself. Write in the third person only — never use the words "I" or "you".
+
+Do NOT describe specific content (e.g. "a person holding a phone"). Do NOT mention text overlays, captions, or rendered text. Do NOT use lists or bullet points — return one flowing paragraph of prompt-ready descriptors separated by commas.
 
 Reply with ONLY the descriptor paragraph. No preamble, no quotes, no markdown.`;
+}
+
+// Guard against the model refusing or returning meta-commentary instead of a
+// clean descriptor. Trending thumbnails are noisy — when the images don't fit
+// the category label the model sometimes replies "these don't look like vlogs,
+// please share real ones..." which is WORSE than no descriptor, because the
+// text gets injected verbatim into the Flux prompt. A real descriptor is a
+// comma-separated list of visual cues with no first/second person and no
+// apology / refusal language.
+function isCleanDescriptor(text: string): boolean {
+  const t = text.toLowerCase();
+  const redFlags = [
+    'i need to', "i'm sorry", 'i apologize', "i can't", 'i cannot', "i'm unable",
+    "i'm not able", 'as an ai', "don't appear", 'do not appear', "doesn't appear",
+    "doesn't match", "don't match", 'do not match', 'please share', 'please provide',
+    "i'd be happy", 'i would be happy', 'happy to extract', "you've shared",
+    "you've provided", 'you shared', 'thumbnails you', 'these images', 'i notice',
+    'would not be accurate', 'not be accurate or useful',
+  ];
+  if (redFlags.some((f) => t.includes(f))) return false;
+  // A real descriptor never uses first/second-person pronouns as standalone words.
+  if (/\b(i|i'm|i'll|you|your|you've|we|us)\b/i.test(text)) return false;
+  // Descriptors are comma-separated cue lists — expect several commas and a
+  // sane length. A refusal is prose with few commas.
+  if ((text.match(/,/g) || []).length < 4) return false;
+  if (text.length < 60 || text.length > 1200) return false;
+  return true;
 }
 
 async function extractForStyle(
@@ -124,6 +153,12 @@ async function extractForStyle(
     console.warn(`  [${style}] empty response — skipping`);
     return null;
   }
+  if (!isCleanDescriptor(text)) {
+    console.warn(
+      `  [${style}] response looks like a refusal / meta-commentary, not a style descriptor — skipping.\n    got: ${text.slice(0, 140)}...`
+    );
+    return null;
+  }
   return { descriptor: text, imageCount: images.length };
 }
 
@@ -152,7 +187,17 @@ async function main() {
   }
 
   console.log(`Extracting style descriptors → ${outPath}`);
-  const result: typeof existing = { ...existing };
+  // Seed from existing, but drop any previously-stored entry that no longer
+  // passes the guard — self-heals refusals/meta-commentary that older runs may
+  // have committed before this validation existed.
+  const result: typeof existing = {};
+  for (const [k, v] of Object.entries(existing)) {
+    if (v && typeof v.descriptor === 'string' && isCleanDescriptor(v.descriptor)) {
+      result[k] = v;
+    } else {
+      console.log(`  dropping stale/unclean existing descriptor for "${k}"`);
+    }
+  }
   for (const style of STYLES) {
     const extracted = await extractForStyle(anthropic, style, refsDir);
     if (extracted) {

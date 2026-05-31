@@ -13,6 +13,12 @@ on:
 permissions:
   contents: write
 
+# Only one refresh at a time — overlapping runs race on the git push and
+# produce duplicate "refresh descriptors" commits.
+concurrency:
+  group: refresh-descriptors
+  cancel-in-progress: false
+
 jobs:
   refresh:
     runs-on: ubuntu-latest
