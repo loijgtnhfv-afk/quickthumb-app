@@ -39,34 +39,40 @@ const heroClause = (hasFace: boolean): string =>
 const legible = (hook: string): string =>
   `The text must read EXACTLY 「${hook}」, be large, bold and perfectly legible, and must NOT overlap or be covered by the hero subject.`;
 
+// Forbid NBP from inventing extra lettering beyond the hook (scene labels,
+// signage, watermarks) — that secondary text is where it garbles (it rendered a
+// stray, misspelled "ポケモンテーマパーク" in testing). The hook is the only text.
+const NO_EXTRA_TEXT =
+  'The hook is the ONLY text in the entire image — do NOT render any other words, captions, labels, signage, logos, numbers or watermarks anywhere, and do not misspell the hook.';
+
 export const NBP_CONCEPTS: NbpConcept[] = [
   {
     key: 'face-surprise',
     lang: 'native',
     label: 'Shocked face + hook',
     build: (hook, topic, hasFace) =>
-      `A high-CTR 16:9 YouTube thumbnail about ${topic}. ${heroClause(hasFace)}, with a strong shocked, wide-eyed surprised expression, placed on the RIGHT third of the frame. Warm, bright, vivid lifestyle background with a soft vignette. Keep the LEFT half of the frame clear for text. Place bold text on the LEFT in a heavy white gothic font with a thick black outline. ${legible(hook)} Punchy, professional, irresistible to click.`,
+      `A high-CTR 16:9 YouTube thumbnail about ${topic}. ${heroClause(hasFace)}, with a strong shocked, wide-eyed surprised expression, placed on the RIGHT third of the frame. Warm, bright, vivid lifestyle background with a soft vignette. Keep the LEFT half of the frame clear for text. Place bold text on the LEFT in a heavy white gothic font with a thick black outline. ${legible(hook)} ${NO_EXTRA_TEXT} Punchy, professional, irresistible to click.`,
   },
   {
     key: 'jp-telop',
     lang: 'native',
     label: 'Bold telop + arrow',
     build: (hook, topic, hasFace) =>
-      `A high-CTR Japanese-style 16:9 YouTube thumbnail about ${topic}, with bold "telop" graphics. ${heroClause(hasFace)}, smiling confidently and pointing toward the text, placed on the RIGHT. Clean studio background with one bright accent color and a bold red arrow pointing at the text. Put the text on the LEFT in a heavy white-and-yellow gothic font with a thick black outline, plus a small red circular accent stamp. ${legible(hook)} Energetic Japanese info-content style.`,
+      `A high-CTR Japanese-style 16:9 YouTube thumbnail about ${topic}, with bold "telop" graphics. ${heroClause(hasFace)}, smiling confidently and pointing toward the text, placed on the RIGHT. Clean studio background with one bright accent color and a bold red arrow pointing at the text. Put the text on the LEFT in a heavy white-and-yellow gothic font with a thick black outline, plus a small red circular graphic accent (a shape, no lettering). ${legible(hook)} ${NO_EXTRA_TEXT} Energetic Japanese info-content style.`,
   },
   {
     key: 'global-clean',
     lang: 'en',
     label: 'Clean global style',
     build: (hook, topic, hasFace) =>
-      `A clean, high-CTR 16:9 YouTube thumbnail about ${topic}, modern global MrBeast style. ${heroClause(hasFace)}, with a dramatic emotional expression, centered slightly upper. Simple bold background, strong studio lighting, shallow depth of field, high contrast. Keep the BOTTOM third clear for text. Place the text across the BOTTOM in a heavy white sans-serif with a subtle shadow. ${legible(hook)} Minimal, premium, punchy.`,
+      `A clean, high-CTR 16:9 YouTube thumbnail about ${topic}, modern global MrBeast style. ${heroClause(hasFace)}, with a dramatic emotional expression, centered slightly upper. Simple bold background, strong studio lighting, shallow depth of field, high contrast. Keep the BOTTOM third clear for text. Place the text across the BOTTOM in a heavy white sans-serif with a subtle shadow. ${legible(hook)} ${NO_EXTRA_TEXT} Minimal, premium, punchy.`,
   },
   {
     key: 'action',
     lang: 'native',
     label: 'Action energy',
     build: (hook, topic, hasFace) =>
-      `A high-energy, comic-book-style 16:9 YouTube thumbnail about ${topic}. ${heroClause(hasFace)}, with an intense excited expression, fist raised, placed CENTER-RIGHT. Dark dramatic background with vibrant red and orange energy bursts and strong rim light. Reserve a clear band on the LEFT for the text. Place the text on the LEFT in a bright bold yellow font with a thick black outline and a slight skew. ${legible(hook)} Explosive and exciting.`,
+      `A high-energy 16:9 YouTube thumbnail about ${topic} with comic-book-style BACKGROUND effects only. ${heroClause(hasFace)}, kept PHOTOGRAPHIC and realistic — NOT illustrated, drawn or cartoon — with an intense excited expression, fist raised, placed CENTER-RIGHT. Dark dramatic background with comic-style vibrant red and orange energy bursts and strong rim light (apply the comic styling to the background and effects, never to the person's face). Reserve a clear band on the LEFT for the text. Place the text on the LEFT in a bright bold yellow font with a thick black outline and a slight skew. ${legible(hook)} ${NO_EXTRA_TEXT} Explosive and exciting.`,
   },
 ];
 
