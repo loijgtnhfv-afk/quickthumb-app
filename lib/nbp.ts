@@ -37,13 +37,15 @@ const heroClause = (hasFace: boolean): string =>
     : 'Feature one clear, bold hero subject closely tied to the topic';
 
 const legible = (hook: string): string =>
-  `The text must read EXACTLY 「${hook}」, be large, bold and perfectly legible, and must NOT overlap or be covered by the hero subject.`;
+  `The text must read precisely「${hook}」, be large, bold and perfectly legible, and must not overlap or be covered by the hero subject.`;
 
-// Forbid NBP from inventing extra lettering beyond the hook (scene labels,
-// signage, watermarks) — that secondary text is where it garbles (it rendered a
-// stray, misspelled "ポケモンテーマパーク" in testing). The hook is the only text.
+// Keep the hook the only text. Two failure modes seen in testing: (a) NBP
+// invents stray garbled scene labels (a misspelled "ポケモンテーマパーク"), and
+// (b) it renders ALL-CAPS emphasis words from our own prompt as on-image text
+// (a literal "EXACTLY" leaked from the old "read EXACTLY" wording). So: forbid
+// any extra lettering, and we avoid shouty caps words near the hook elsewhere.
 const NO_EXTRA_TEXT =
-  'The hook is the ONLY text in the entire image — do NOT render any other words, captions, labels, signage, logos, numbers or watermarks anywhere, and do not misspell the hook.';
+  'The hook is the only text in the whole image. Do not add any other or decorative words, kicker words or flair text in any language, and no extra captions, labels, signage, logos, numbers or watermarks anywhere. Render the hook characters as given, without misspelling or altering them.';
 
 export const NBP_CONCEPTS: NbpConcept[] = [
   {
