@@ -20,7 +20,7 @@
     "submitting": "Generating...",
     "errorEmpty": "Please paste a YouTube URL.",
     "errorInvalid": "That doesn’t look like a valid YouTube URL. Try https://youtube.com/watch?v=...",
-    "errorOverLimit": "You’ve used all {limit} free generations. Upgrade to Pro for 150/month.",
+    "errorOverLimit": "You’ve used all {limit} free generations. Upgrade to Pro for more.",
     "errorNetwork": "Network error. Please try again.",
     "urlHint": "Works with youtube.com/watch, youtu.be, and Shorts links."
   },

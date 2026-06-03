@@ -218,16 +218,25 @@ export async function POST(request: NextRequest) {
     }
     const generationId = insertRow.id as string;
 
-    let thumbnailUrls: string[];
+    let thumbs: { url: string; conceptKey: string; label: string }[];
     try {
       const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
-      // One finished NBP composition per concept, in parallel.
-      const buffers = await Promise.all(
-        prompts.map((prompt) => generateNbpThumbnail({ replicate, prompt, faceRefUrls }))
+      // Generate + upload every concept in parallel, but tolerate INDIVIDUAL
+      // failures (NBP safety filter, transient errors): one bad concept must not
+      // sink the whole generation — we keep whatever succeeded.
+      const settled = await Promise.allSettled(
+        NBP_CONCEPTS.map(async (concept, i) => {
+          const buf = await generateNbpThumbnail({ replicate, prompt: prompts[i], faceRefUrls });
+          const url = await uploadPng(buf, user.id, generationId, `thumb-${i + 1}`);
+          return { url, conceptKey: concept.key, label: concept.label };
+        })
       );
-      thumbnailUrls = await Promise.all(
-        buffers.map((buf, i) => uploadPng(buf, user.id, generationId, `thumb-${i + 1}`))
-      );
+      thumbs = settled.flatMap((r, i) => {
+        if (r.status === 'fulfilled') return [r.value];
+        console.warn(`NBP concept ${NBP_CONCEPTS[i].key} failed:`, r.reason);
+        return [];
+      });
+      if (thumbs.length === 0) throw new Error('All thumbnail generations failed');
     } catch (genError) {
       await admin
         .from('generations')
@@ -243,7 +252,7 @@ export async function POST(request: NextRequest) {
 
     await admin
       .from('generations')
-      .update({ status: 'completed', thumbnail_urls: thumbnailUrls })
+      .update({ status: 'completed', thumbnail_urls: thumbs.map((t) => t.url) })
       .eq('id', generationId);
 
     await admin
@@ -265,15 +274,14 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       id: generationId,
-      thumbnails: thumbnailUrls.map((url, i) => ({
+      thumbnails: thumbs.map((t, i) => ({
         id: i + 1,
-        url,
+        url: t.url,
         // NBP output is the finished artifact — there is no separate text-free
-        // "raw" layer, so image_url mirrors url (the UI's "image only" button
-        // downloads the same finished image; revisit in the UI pass).
-        image_url: url,
-        concept_key: NBP_CONCEPTS[i]?.key,
-        prompt: NBP_CONCEPTS[i]?.label ?? '',
+        // "raw" layer, so image_url mirrors url.
+        image_url: t.url,
+        concept_key: t.conceptKey,
+        prompt: t.label,
       })),
       generations_used: profile.generations_used + 1,
       generations_limit: profile.generations_limit,

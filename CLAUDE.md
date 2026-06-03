@@ -7,7 +7,7 @@ AI-powered YouTube thumbnail generator SaaS. Paste a YouTube URL, get 5 styled t
 - **Live**: https://quickthumb-app.vercel.app/ (custom domain: quickthumb.app — DNS propagated)
 - **GitHub**: github.com/loijgtnhfv-afk/quickthumb-app
 - **Vercel**: sano-s-projects1/quickthumb-app
-- **Stage**: MVP working end-to-end. 5 free generations per user. Pre-launch (no Stripe yet).
+- **Stage**: Appeal pivot v2 LIVE (2026-06-03) — engine is Nano Banana Pro generating FINISHED thumbnails; the face comes from the user's OWN uploaded photo. Pre-launch (no Stripe yet). Free tier: 2 generations × 4 images.
 
 ## Owner
 
@@ -15,7 +15,22 @@ AI-powered YouTube thumbnail generator SaaS. Paste a YouTube URL, get 5 styled t
 
 **Target market**: BOTH US/global and Japan, not Japan-only despite the owner being Japanese-speaking. Decision on 2026-05-26 — UI is fully i18n'd (en + ja) so the same codebase serves both markets. See `i18n/request.ts`, `messages/`, and the EN/JA toggle in the page header. Don't strip the English path; don't default localization decisions to Japanese.
 
-## Architecture — "A option" (4 style-specific bgs, parallel)
+## Architecture (CURRENT — appeal pivot v2, 2026-06-03)
+
+Paste a video URL + optionally upload your own face photo → 4 finished, styled thumbnails (hero + scene + baked-in hook text) in one pass.
+
+1. `POST /api/generate` (auth + free-limit check).
+2. `fetchVideoMetadata` (YouTube Data API) → title / description / channel.
+3. `analyzeForThumbnail` (Claude Haiku) → an English scene topic + 2-4 word HOOKS in BOTH the title's language AND English (the JP + global localized variants).
+4. **Face source = the user's OWN uploaded photo only** (`POST /api/upload-persona` → Supabase `thumbnails` bucket → public URL). No photo → faceless topical scene. A third party's face is NEVER baked in (legal: consent / right-of-publicity — see project memory).
+5. **Engine = `lib/nbp.ts`** → Replicate `google/nano-banana-pro` (Gemini 3 Pro Image). For each of 4 `NBP_CONCEPTS` (face-surprise / jp-telop / global-clean[EN] / action) it builds a prompt that RESERVES a text zone (so the hero never occludes the hook), passes the face photo as `image_input` for identity preservation, generates 16:9 @2K, and pins the result to 1280×720 via sharp. Concepts run in parallel via `Promise.allSettled` (one concept failing — e.g. an NBP safety refusal — doesn't sink the batch).
+6. Upload finished PNGs to Supabase Storage; return `thumbnails[]` (url / image_url / concept_key / prompt). UI renders whatever count survives.
+
+**Cost ≈ $0.134/image × 4 ≈ $0.54/generation** (NBP 2K). Iterate prompts/concepts offline with `scripts/preview-nbp.ts` (needs only `REPLICATE_API_TOKEN`; output in `.preview-nbp/`).
+
+> Everything below — the "A option" Flux-background + Satori-overlay pipeline, the 4 Satori "styles", the quad-grid 5th card, and the Satori/Flux/CJK "Critical Gotchas" — is **LEGACY (pre-2026-06-03)**. `lib/thumbnail-compose.ts` still exists but is no longer used by `/api/generate`. Kept for reference / possible reuse.
+
+## Architecture — "A option" (LEGACY, pre-pivot — 4 style-specific bgs, parallel)
 
 1. User pastes YouTube URL
 2. Fetch video title + description via YouTube Data API v3
@@ -43,12 +58,14 @@ AI-powered YouTube thumbnail generator SaaS. Paste a YouTube URL, get 5 styled t
 ```
 app/
   page.tsx                  — landing page (i18n via next-intl, EN/JA toggle)
-  api/generate/route.ts     — main API endpoint (POST /api/generate)
+  api/generate/route.ts     — main API endpoint (POST /api/generate) — CURRENT: Nano Banana Pro engine
+  api/upload-persona/route.ts — uploads the user's own face photo (persona) → Supabase, returns URL
   api/locale/route.ts       — sets the NEXT_LOCALE cookie for i18n toggle
   auth/                     — Supabase Auth signup/login pages (i18n)
   layout.tsx                — root layout, server-resolves locale + NextIntlClientProvider
 lib/
-  thumbnail-compose.ts      — Satori-based composition + composeQuadGrid + STYLE_KICKERS
+  nbp.ts                    — CURRENT engine: Nano Banana Pro finished-thumbnail generation + NBP_CONCEPTS
+  thumbnail-compose.ts      — LEGACY Satori-based composition + composeQuadGrid + STYLE_KICKERS (unused by /api/generate)
   supabase/
     server.ts               — Supabase clients (createClient + createServiceClient)
 middleware.ts               — auth middleware

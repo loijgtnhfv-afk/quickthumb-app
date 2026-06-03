@@ -20,7 +20,7 @@
     "submitting": "生成中...",
     "errorEmpty": "YouTubeのURLを入力してください。",
     "errorInvalid": "YouTubeのURLとして認識できませんでした。例: https://youtube.com/watch?v=...",
-    "errorOverLimit": "無料枠の{limit}回を使い切りました。Proにアップグレードで月150回。",
+    "errorOverLimit": "無料枠の{limit}回を使い切りました。Proにアップグレードで上限アップ。",
     "errorNetwork": "通信エラーが発生しました。もう一度お試しください。",
     "urlHint": "youtube.com/watch、youtu.be、Shortsリンクに対応しています。"
   },
