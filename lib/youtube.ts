@@ -18,12 +18,6 @@ export type VideoMetadata = {
   channelId: string;
 };
 
-export type ChannelInfo = {
-  channelId: string;
-  channelTitle: string;
-  avatarUrl: string | null;
-};
-
 function ytKey(): string {
   const key = process.env.YOUTUBE_API_KEY;
   if (!key) throw new Error('YOUTUBE_API_KEY not configured');
@@ -48,31 +42,7 @@ export async function fetchVideoMetadata(videoId: string): Promise<VideoMetadata
   };
 }
 
-export async function fetchChannelInfo(channelId: string): Promise<ChannelInfo> {
-  const url = `https://www.googleapis.com/youtube/v3/channels?id=${channelId}&part=snippet&key=${ytKey()}`;
-  const res = await fetch(url, { cache: 'no-store' });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`YouTube channels API ${res.status}: ${body.slice(0, 300)}`);
-  }
-  const data = await res.json();
-  const item = data.items?.[0];
-  if (!item) {
-    return { channelId, channelTitle: '', avatarUrl: null };
-  }
-  const thumbs = item.snippet?.thumbnails || {};
-  // Prefer high (800px) → medium (240px) → default (88px).
-  const avatarUrl: string | null =
-    thumbs.high?.url || thumbs.medium?.url || thumbs.default?.url || null;
-  return {
-    channelId,
-    channelTitle: item.snippet?.title || '',
-    avatarUrl,
-  };
-}
-
-export async function fetchAvatarBuffer(avatarUrl: string): Promise<Buffer> {
-  const res = await fetch(avatarUrl, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`Failed to fetch avatar: ${res.status}`);
-  return Buffer.from(await res.arrayBuffer());
-}
+// NOTE: third-party channel-avatar fetching (fetchChannelInfo / fetchAvatarBuffer)
+// was removed with the appeal-pivot v2 — the face hero now comes ONLY from the
+// user's own uploaded persona (consent / right-of-publicity), never a channel's
+// avatar. The video URL is used for the topic/hooks only.

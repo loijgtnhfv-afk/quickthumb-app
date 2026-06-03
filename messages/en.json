@@ -24,13 +24,6 @@
     "errorNetwork": "Network error. Please try again.",
     "urlHint": "Works with youtube.com/watch, youtu.be, and Shorts links."
   },
-  "avatar": {
-    "checkboxLabel": "Include {channel}'s avatar",
-    "checkboxHint": "Composes the channel's profile image into each thumbnail.",
-    "modeLabel": "Display as:",
-    "modeFace": "Face (high impact)",
-    "modeLogo": "Logo (no crop)"
-  },
   "persona": {
     "label": "Your face (optional)",
     "hint": "Star in your own thumbnails — upload a clear photo of your face.",
@@ -50,8 +43,7 @@
   "results": {
     "heading": "{count} thumbnails ready",
     "regenerate": "Generate again",
-    "download": "Download",
-    "imageOnly": "Image only"
+    "download": "Download"
   },
   "pricing": {
     "upgrade": "Upgrade to Pro",
@@ -67,7 +59,7 @@
     "signinTitle": "Welcome back",
     "signupTitle": "Create your account",
     "signinSubtitle": "Sign in to generate thumbnails.",
-    "signupSubtitle": "5 free thumbnails to start. No credit card.",
+    "signupSubtitle": "Free thumbnails to start. No credit card.",
     "emailLabel": "Email",
     "passwordLabel": "Password",
     "submitSignin": "Sign in",
@@ -79,13 +71,6 @@
     "noAccount": "Don't have an account?",
     "switchToSignin": "Sign in",
     "switchToSignup": "Sign up"
-  },
-  "styles": {
-    "vlog": "Lifestyle / Vlog — white pill kicker + big centered sans title",
-    "tech": "Tech / How-to — left text panel, hero subject on the right",
-    "gaming": "Gaming / Manga — yellow title with thick outline + red drop shadow, \"ACTION!\" stamp",
-    "magazine": "Magazine cover — top kicker + big serif display title on a hero photo",
-    "quad": "Keyword spotlight — raw scene ×4 with one bold centered keyword"
   },
   "common": {
     "loading": "Loading..."
