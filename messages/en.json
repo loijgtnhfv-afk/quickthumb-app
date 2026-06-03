@@ -10,7 +10,7 @@
     "beta": "Beta · Free for early users",
     "titleLine1": "YouTube thumbnails",
     "titleLine2": "in 60 seconds.",
-    "subtitle": "Paste any YouTube URL. Get 5 AI-generated thumbnail options instantly. 5 free · No credit card."
+    "subtitle": "Upload your face, paste your video URL, and get finished thumbnails — your face plus a bold hook, baked into one image. Free to start · No credit card."
   },
   "form": {
     "urlLabel": "YouTube URL",
@@ -31,13 +31,23 @@
     "modeFace": "Face (high impact)",
     "modeLogo": "Logo (no crop)"
   },
+  "persona": {
+    "label": "Your face (optional)",
+    "hint": "Star in your own thumbnails — upload a clear photo of your face.",
+    "upload": "Upload photo",
+    "change": "Change photo",
+    "remove": "Remove",
+    "uploading": "Uploading...",
+    "uploadError": "Upload failed. Try another image.",
+    "consent": "Upload only your own photo (or one you have the right to use). Without a photo, thumbnails are generated without a face."
+  },
   "caption": {
     "label": "Caption (optional)",
     "hint": " · Auto-generated from the title if left blank",
     "placeholder": "e.g. Why I crossed $10K MRR"
   },
   "results": {
-    "heading": "5 thumbnails ready",
+    "heading": "{count} thumbnails ready",
     "regenerate": "Generate again",
     "download": "Download",
     "imageOnly": "Image only"

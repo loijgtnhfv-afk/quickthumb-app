@@ -6,25 +6,19 @@ import { createClient } from '@/lib/supabase/client';
 import type { User } from '@supabase/supabase-js';
 
 type Status = 'idle' | 'loading' | 'success' | 'error';
-type StyleKey = 'vlog' | 'tech' | 'gaming' | 'magazine' | 'quad';
 
 interface Thumbnail {
   id: number;
   url: string;
   image_url: string;
   prompt: string;
-  style_key?: StyleKey;
+  concept_key?: string;
 }
 
 interface Profile {
   plan: 'free' | 'pro';
   generations_used: number;
   generations_limit: number;
-}
-
-interface ChannelPreview {
-  channel_title: string;
-  avatar_url: string | null;
 }
 
 function isValidYouTubeUrl(url: string): boolean {
@@ -103,9 +97,11 @@ export default function Home() {
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState('');
   const [results, setResults] = useState<Thumbnail[]>([]);
-  const [channelPreview, setChannelPreview] = useState<ChannelPreview | null>(null);
-  const [useFace, setUseFace] = useState(false);
-  const [avatarKind, setAvatarKind] = useState<'face' | 'logo'>('face');
+  // The user's own uploaded face photo (persona). When set, NBP makes it the
+  // hero of every thumbnail; when null, thumbnails are generated faceless.
+  const [personaUrl, setPersonaUrl] = useState<string | null>(null);
+  const [personaUploading, setPersonaUploading] = useState(false);
+  const [personaError, setPersonaError] = useState('');
   const [customText, setCustomText] = useState('');
 
   useEffect(() => {
@@ -136,48 +132,36 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Debounced channel preview: as soon as a valid URL is pasted, fetch the
-  // uploader's avatar + name so the user can decide whether to enable the
-  // "include uploader's face" overlay.
-  useEffect(() => {
-    if (!url || !isValidYouTubeUrl(url)) {
-      setChannelPreview(null);
-      return;
-    }
-    const ctl = new AbortController();
-    const tid = setTimeout(async () => {
-      try {
-        const res = await fetch('/api/preview-channel', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ youtube_url: url }),
-          signal: ctl.signal,
-        });
-        if (!res.ok) {
-          setChannelPreview(null);
-          return;
-        }
-        const data = await res.json();
-        setChannelPreview({
-          channel_title: data.channel_title || '',
-          avatar_url: data.avatar_url || null,
-        });
-      } catch {
-        // aborted or network error — silently ignore, preview is optional
-      }
-    }, 400);
-    return () => {
-      clearTimeout(tid);
-      ctl.abort();
-    };
-  }, [url]);
-
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     setUser(null);
     setProfile(null);
     setResults([]);
     setStatus('idle');
+  };
+
+  const handlePersonaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPersonaError('');
+    setPersonaUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/upload-persona', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) {
+        setPersonaError(data.error || t('persona.uploadError'));
+        return;
+      }
+      setPersonaUrl(data.url);
+    } catch {
+      setPersonaError(t('persona.uploadError'));
+    } finally {
+      setPersonaUploading(false);
+      // Allow re-selecting the same file again later.
+      e.target.value = '';
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -205,8 +189,7 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           youtube_url: url,
-          use_face: useFace && !!channelPreview?.avatar_url,
-          avatar_kind: avatarKind,
+          persona_url: personaUrl,
           custom_text: customText.trim(),
         }),
       });
@@ -244,31 +227,16 @@ export default function Home() {
     document.body.removeChild(a);
   };
 
+  // "Generate again" — keep the uploaded persona so the user doesn't re-upload.
   const handleReset = () => {
     setUrl('');
     setStatus('idle');
     setResults([]);
     setError('');
-    setChannelPreview(null);
-    setUseFace(false);
-    setAvatarKind('face');
     setCustomText('');
   };
 
   const remaining = profile ? Math.max(0, profile.generations_limit - profile.generations_used) : null;
-
-  // For each thumb card: prefer the localized lookup if the API gave us a
-  // style_key; fall back to the English `prompt` returned by older deploys.
-  const styleLabelFor = (thumb: Thumbnail): string => {
-    if (thumb.style_key) {
-      try {
-        return t(`styles.${thumb.style_key}`);
-      } catch {
-        // missing key — fall through to the English prompt
-      }
-    }
-    return thumb.prompt;
-  };
 
   return (
     <main
@@ -451,103 +419,105 @@ export default function Home() {
             </div>
           )}
 
-          {channelPreview && channelPreview.avatar_url && (
-            <div
-              style={{
-                marginTop: 14,
-                padding: '10px 14px',
-                background: 'rgba(255,255,255,0.05)',
-                border: useFace
-                  ? '1px solid rgba(167,139,250,0.6)'
-                  : '1px solid rgba(255,255,255,0.15)',
-                borderRadius: 10,
-                transition: 'border-color 0.15s ease, background 0.15s ease',
-              }}
-            >
-              <label
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  cursor: 'pointer',
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={useFace}
-                  onChange={(e) => setUseFace(e.target.checked)}
-                  style={{
-                    width: 18,
-                    height: 18,
-                    accentColor: '#a78bfa',
-                    cursor: 'pointer',
-                  }}
-                />
-                {/* eslint-disable-next-line @next/next/no-img-element */}
+          {/* Persona (your own face) uploader */}
+          <div
+            style={{
+              marginTop: 14,
+              padding: '14px',
+              background: 'rgba(255,255,255,0.05)',
+              border: personaUrl
+                ? '1px solid rgba(167,139,250,0.6)'
+                : '1px solid rgba(255,255,255,0.15)',
+              borderRadius: 10,
+              transition: 'border-color 0.15s ease',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              {personaUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={channelPreview.avatar_url}
-                  alt={channelPreview.channel_title}
+                  src={personaUrl}
+                  alt="Your face"
                   style={{
-                    width: 40,
-                    height: 40,
+                    width: 44,
+                    height: 44,
                     borderRadius: '50%',
                     objectFit: 'cover',
-                    border: '1px solid rgba(255,255,255,0.2)',
+                    border: '1px solid rgba(255,255,255,0.25)',
                   }}
                 />
-                <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
-                  <span style={{ fontSize: 14, fontWeight: 600 }}>
-                    {t('avatar.checkboxLabel', { channel: channelPreview.channel_title })}
-                  </span>
-                  <span style={{ fontSize: 12, opacity: 0.6 }}>
-                    {t('avatar.checkboxHint')}
-                  </span>
-                </div>
-              </label>
-
-              {useFace && (
+              ) : (
                 <div
+                  aria-hidden
                   style={{
-                    marginTop: 12,
-                    paddingTop: 10,
-                    borderTop: '1px solid rgba(255,255,255,0.08)',
+                    width: 44,
+                    height: 44,
+                    borderRadius: '50%',
+                    background: 'rgba(255,255,255,0.08)',
+                    border: '1px dashed rgba(255,255,255,0.25)',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 10,
-                    flexWrap: 'wrap',
+                    justifyContent: 'center',
+                    fontSize: 20,
+                    opacity: 0.6,
                   }}
                 >
-                  <span style={{ fontSize: 13, opacity: 0.75 }}>{t('avatar.modeLabel')}</span>
-                  {(['face', 'logo'] as const).map((kind) => {
-                    const active = avatarKind === kind;
-                    return (
-                      <button
-                        key={kind}
-                        type="button"
-                        onClick={() => setAvatarKind(kind)}
-                        style={{
-                          padding: '6px 14px',
-                          fontSize: 13,
-                          fontWeight: 600,
-                          color: active ? '#0f0c29' : '#fff',
-                          background: active
-                            ? 'linear-gradient(135deg, #a78bfa 0%, #f0abfc 100%)'
-                            : 'rgba(255,255,255,0.08)',
-                          border: active
-                            ? '1px solid transparent'
-                            : '1px solid rgba(255,255,255,0.18)',
-                          borderRadius: 999,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {kind === 'face' ? t('avatar.modeFace') : t('avatar.modeLogo')}
-                      </button>
-                    );
-                  })}
+                  🙂
                 </div>
               )}
+              <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+                <span style={{ fontSize: 14, fontWeight: 600 }}>{t('persona.label')}</span>
+                <span style={{ fontSize: 12, opacity: 0.6 }}>{t('persona.hint')}</span>
+              </div>
+              <label
+                style={{
+                  padding: '8px 16px',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: '#0f0c29',
+                  background: 'linear-gradient(135deg, #a78bfa 0%, #f0abfc 100%)',
+                  borderRadius: 999,
+                  cursor: personaUploading ? 'wait' : 'pointer',
+                  opacity: personaUploading ? 0.6 : 1,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {personaUploading
+                  ? t('persona.uploading')
+                  : personaUrl
+                  ? t('persona.change')
+                  : t('persona.upload')}
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={handlePersonaUpload}
+                  disabled={personaUploading}
+                  style={{ display: 'none' }}
+                />
+              </label>
+              {personaUrl && !personaUploading && (
+                <button
+                  type="button"
+                  onClick={() => setPersonaUrl(null)}
+                  style={{
+                    padding: '8px 12px',
+                    fontSize: 13,
+                    background: 'transparent',
+                    color: '#fff',
+                    border: '1px solid rgba(255,255,255,0.25)',
+                    borderRadius: 999,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {t('persona.remove')}
+                </button>
+              )}
             </div>
-          )}
+            {personaError && (
+              <div style={{ marginTop: 10, fontSize: 13, color: '#fecaca' }}>{personaError}</div>
+            )}
+            <div style={{ fontSize: 11, opacity: 0.5, marginTop: 10 }}>{t('persona.consent')}</div>
+          </div>
 
           <div style={{ marginTop: 14 }}>
             <label
@@ -591,7 +561,7 @@ export default function Home() {
 
         {status === 'loading' && (
           <div className="thumb-row">
-            {[0, 1, 2, 3, 4].map((i) => (
+            {[0, 1, 2, 3].map((i) => (
               <div
                 key={i}
                 style={{
@@ -619,7 +589,9 @@ export default function Home() {
                 gap: 12,
               }}
             >
-              <h2 style={{ fontSize: 22, margin: 0, fontWeight: 700 }}>{t('results.heading')}</h2>
+              <h2 style={{ fontSize: 22, margin: 0, fontWeight: 700 }}>
+                {t('results.heading', { count: results.length })}
+              </h2>
               <button
                 onClick={handleReset}
                 style={{
@@ -654,43 +626,22 @@ export default function Home() {
                     style={{ width: '100%', display: 'block', aspectRatio: '16/9', objectFit: 'cover' }}
                   />
                   <div style={{ padding: 14 }}>
-                    <p style={{ fontSize: 13, opacity: 0.7, margin: '0 0 12px', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                      {styleLabelFor(thumb)}
-                    </p>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <button
-                        onClick={() => handleDownload(thumb.url, `quickthumb-${thumb.id}.png`)}
-                        style={{
-                          width: '100%',
-                          padding: '10px 14px',
-                          fontSize: 14,
-                          fontWeight: 600,
-                          color: '#0f0c29',
-                          background: '#fff',
-                          border: 'none',
-                          borderRadius: 8,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {t('results.download')}
-                      </button>
-                      <button
-                        onClick={() => handleDownload(thumb.image_url, `quickthumb-${thumb.id}-image.png`)}
-                        style={{
-                          width: '100%',
-                          padding: '8px 14px',
-                          fontSize: 13,
-                          fontWeight: 500,
-                          color: '#fff',
-                          background: 'transparent',
-                          border: '1px solid rgba(255,255,255,0.3)',
-                          borderRadius: 8,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {t('results.imageOnly')}
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => handleDownload(thumb.url, `quickthumb-${thumb.id}.png`)}
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        fontSize: 14,
+                        fontWeight: 600,
+                        color: '#0f0c29',
+                        background: '#fff',
+                        border: 'none',
+                        borderRadius: 8,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {t('results.download')}
+                    </button>
                   </div>
                 </div>
               ))}
@@ -714,7 +665,7 @@ export default function Home() {
         button:not(:disabled):hover { transform: translateY(-1px); }
         .thumb-row {
           display: grid;
-          grid-template-columns: repeat(5, minmax(0, 1fr));
+          grid-template-columns: repeat(4, minmax(0, 1fr));
           gap: 14px;
         }
         @media (max-width: 900px) {

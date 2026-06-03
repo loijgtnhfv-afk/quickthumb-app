@@ -10,7 +10,7 @@
     "beta": "ベータ版 · 早期登録は無料",
     "titleLine1": "YouTubeサムネを",
     "titleLine2": "60秒で。",
-    "subtitle": "YouTubeのURLを貼るだけ。AIが5枚のサムネ案を即生成。最初の5枚は無料・クレカ不要。"
+    "subtitle": "顔写真をアップして動画URLを貼るだけ。あなたの顔＋強いフックを1枚に焼き込んだ完成サムネを即生成。まずは無料・クレカ不要。"
   },
   "form": {
     "urlLabel": "YouTubeのURL",
@@ -31,13 +31,23 @@
     "modeFace": "顔（インパクト大）",
     "modeLogo": "ロゴ（切らずに表示）"
   },
+  "persona": {
+    "label": "あなたの顔（任意）",
+    "hint": "サムネの主役に。自分の顔がはっきり写った写真をアップ。",
+    "upload": "写真をアップ",
+    "change": "写真を変更",
+    "remove": "削除",
+    "uploading": "アップロード中...",
+    "uploadError": "アップロードに失敗しました。別の画像でお試しください。",
+    "consent": "自分の写真（または使用権のある写真）のみアップしてください。写真なしの場合は顔なしで生成します。"
+  },
   "caption": {
     "label": "字幕（任意）",
     "hint": " · 空欄ならタイトルから自動生成",
     "placeholder": "例: 月収100万になった理由"
   },
   "results": {
-    "heading": "サムネ5枚できあがり",
+    "heading": "サムネ{count}枚できあがり",
     "regenerate": "もう一度生成",
     "download": "ダウンロード",
     "imageOnly": "画像のみ"

@@ -42,3 +42,12 @@ references/*/*.jpg
 references/*/*.jpeg
 references/*/*.webp
 .env*
+
+# offline harness output (generated thumbnail previews)
+.preview/
+.preview-nbp/
+
+# claude code workspace + local logs / lockfile (no committed lockfile by convention)
+.claude/
+npm-install.log
+package-lock.json
