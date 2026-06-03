@@ -5,10 +5,11 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { generateNbpThumbnail, NBP_CONCEPTS } from '@/lib/nbp';
 import { extractVideoId, fetchVideoMetadata } from '@/lib/youtube';
 
-// 4 parallel Nano Banana Pro calls can take ~30-50s. Request up to 300s; Vercel
-// clamps to the plan/Fluid-Compute max (60s on Hobby, up to 300s with Fluid
-// Compute / Pro), so this is a safe upper bound, not a guarantee.
-export const maxDuration = 300;
+// 4 parallel Nano Banana Pro calls normally finish in ~40s. Each call has its
+// own 90s timeout in lib/nbp, so cap the function at 120s — a hung generation
+// fails fast (≈90s) instead of sitting for minutes. Vercel clamps to the plan
+// max (60s on Hobby; up to 300s with Fluid Compute / Pro).
+export const maxDuration = 120;
 export const runtime = 'nodejs';
 
 // CJK / fullwidth / kana ranges. NBP renders CJK well, so unlike the old Flux
