@@ -39,7 +39,8 @@
     "remove": "Remove",
     "uploading": "Uploading...",
     "uploadError": "Upload failed. Try another image.",
-    "consent": "Upload only your own photo (or one you have the right to use). Without a photo, thumbnails are generated without a face."
+    "consent": "Upload only your own photo (or one you have the right to use). Without a photo, thumbnails are generated without a face.",
+    "faceRejected": "We couldn’t find a single clear face in that photo. Upload a clear, front-facing photo of just your face."
   },
   "caption": {
     "label": "Caption (optional)",

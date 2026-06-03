@@ -151,7 +151,9 @@ export default function Home() {
       const res = await fetch('/api/upload-persona', { method: 'POST', body: fd });
       const data = await res.json();
       if (!res.ok) {
-        setPersonaError(data.error || t('persona.uploadError'));
+        setPersonaError(
+          res.status === 422 ? t('persona.faceRejected') : data.error || t('persona.uploadError')
+        );
         return;
       }
       setPersonaUrl(data.url);
