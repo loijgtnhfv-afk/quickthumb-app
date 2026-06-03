@@ -4,21 +4,45 @@ Drafted 2026-06-03 from a web-grounded research pass (Stripe / Supabase / Google
 
 ## 0. Pricing — DECISION NEEDED (most important, blocks Stripe)
 
-Hard cost: NBP standard = **$0.134/image × 4 = ~$0.54/generation**. Google **Batch API halves it** ($0.067/img → $0.27/gen) but adds latency (queue, not real-time).
+Hard cost (verified 2026-06-03): NBP standard = **$0.134/image**, so 4-image generation = **~$0.54/gen**. Google's **Batch API halves it** ($0.067/img → $0.27/gen) but is queue-based, not real-time, and would require moving off Replicate to the native Gemini API (`gemini-3-pro-image`) — a separate engine-integration task (see §0.3).
 
-The trap (verified):
-- Current **free tier = 2 gen × 4 img = 8 images ≈ $1.07/signup** → bleeds at scale (1,000 signups ≈ $1,072).
-- **$18/mo for 30 generations (120 img) on standard = only 10.7% margin** → a loss after Stripe/Supabase/Vercel fees.
+### Recommended config (founder: confirm or tweak)
 
-Recommended structure (meter by **generations** in the UI; enforce an image cap internally):
-- **FREE: 2 generations × 1 image** (2 free images, not 8) → ~$0.27/signup, ~4× cheaper. ⚠️ trade-off: free users no longer get the full 4-grid "wow". Alternative: 2 gen × 2 img.
-- **PRO — $18 / ¥2,880:** 20 gen (80 img) standard = **40% margin**; raise to 30 gen when on Batch (55%).
-- **PRO MAX — $39 / ¥6,200:** 45 gen (180 img) standard = 38%; 60 gen on Batch (59%).
-- Native Stripe Prices in **both USD and JPY** (JPY is zero-decimal → send `2880`, not `288000`). Re-check USD/JPY (~159.85 on 2026-06-03) before launch.
+Meter by **generations** in the UI; enforce the per-gen image cap internally.
+
+| Plan | Price | Caps | Images | Hard cost | Margin (pre-fees) |
+|------|-------|------|--------|-----------|-------------------|
+| **FREE** | $0 | **1 gen × 4 img** | 4 / signup | **$0.54/signup** | — (acquisition) |
+| **PRO** | **$18 / ¥2,880** /mo | 20 gen × 4 | 80/mo | $10.72 | **40%** |
+| **PRO MAX** | **$39 / ¥6,200** /mo | 45 gen × 4 | 180/mo | $24.12 | **38%** |
+
+On Batch later: bump PRO→30 gen (55% margin), PRO MAX→60 gen (59%) at the same prices.
+
+### The one real decision: the FREE tier
+
+The pivot's entire value prop is **"4 conceptually-different finished thumbnails"** (face-surprise / jp-telop / global-clean / action). So the free tier's job is to show that wow and convert — not to be maximally cheap.
+
+| Free option | Images | $/signup | 1k signups | Trade-off |
+|-------------|--------|----------|------------|-----------|
+| **1 gen × 4 img** *(recommended)* | 4 | **$0.54** | $536 | Full 4-grid wow once; 1 gen is enough friction to push upgrade |
+| 2 gen × 2 img | 4 | $0.54 | $536 | Two tries but only 2 concepts each — partial wow |
+| 2 gen × 1 img | 2 | $0.27 | $268 | Cheapest, but a single image guts the "4 concepts" demo |
+
+**Recommendation: FREE = 1 generation × 4 images.** Same $/signup as 2×2 but delivers the complete product experience in the one free shot, which should convert better than rationing single images. The old `generations_limit = 2 × 4-img` (~$1.07/signup) is the one to retire.
+
+⚠️ The old "trap" plan ($18 for 30 gen = 120 img standard = only 10.7% margin, a loss after fees) is killed — the table above is the corrected structure.
+
+### Guardrails (all free tiers)
 - Gate free behind email-verify / OAuth + per-IP rate-limit (disposable-email abuse).
-- **Biggest lever: move generation to the Batch API** (latency-tolerant: queue + notify) → ~2× margins. If real-time is required, stay on the lower (40%) caps.
+- Native Stripe Prices in **both USD and JPY** — JPY is zero-decimal, so send `2880` / `6200` (NOT `288000`). Re-check USD/JPY (~159.85 on 2026-06-03; $18≈¥2,877, $39≈¥6,234) before launch.
+
+### §0.3 Biggest margin lever — Batch API
+Moving generation to Google's Batch API (~½ cost → ~2× margin) is the single biggest economics win, but: (a) it's latency-tolerant only (queue + notify, not the current ~40s real-time UX), and (b) NBP-via-Replicate has no batch endpoint — you'd integrate the native Gemini API. Defer until there's paid volume; keep real-time on the 40%-margin caps for launch.
 
 Competitor anchors: Samune (JP) ¥990/30, ¥1,980/60, ¥4,980/200 (1 credit = 1 img); Pikzels $28/$56; 1of10 $69.
+
+### SQL to apply once the FREE tier is decided
+For **1 gen × 4 img**: `alter table profiles alter column generations_limit set default 1;` (and `update profiles set generations_limit = 1 where plan = 'free';` for existing rows). The 4-image cap is already enforced in code by `NBP_CONCEPTS.length`.
 
 ## 1. Persona face-validation — DONE (shipped)
 

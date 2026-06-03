@@ -4,7 +4,7 @@ AI-powered YouTube thumbnail generator SaaS. Paste a YouTube URL, get 5 styled t
 
 ## Status
 
-- **Live**: https://quickthumb-app.vercel.app/ (custom domain: quickthumb.app — DNS propagated)
+- **Live**: https://quickthumb-app.vercel.app/ (custom domain quickthumb.app NOT wired up yet — apex + app. subdomain both fail to resolve as of 2026-06-03; `metadataBase` points at the Vercel origin until DNS is configured in Vercel)
 - **GitHub**: github.com/loijgtnhfv-afk/quickthumb-app
 - **Vercel**: sano-s-projects1/quickthumb-app
 - **Stage**: Appeal pivot v2 LIVE (2026-06-03) — engine is Nano Banana Pro generating FINISHED thumbnails; the face comes from the user's OWN uploaded photo. Pre-launch (no Stripe yet). Free tier: 2 generations × 4 images.

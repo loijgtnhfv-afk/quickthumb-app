@@ -84,25 +84,19 @@ async function toImageBytes(out: unknown): Promise<Buffer | null> {
     url = String((item as { url: () => string }).url());
   }
   if (!url) return null;
-  const res = await fetch(url);
+  // The output URL is a replicate CDN file; if it hangs, don't let the fetch
+  // sit indefinitely after we've already paid for the generation.
+  const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
   if (!res.ok) return null;
   return Buffer.from(await res.arrayBuffer());
 }
 
 // Cap how long we wait on a single NBP call. Normal latency is ~40s; if a call
-// hangs (e.g. the model can't fetch a reference image), this fails it fast so
-// the request doesn't sit until the function timeout. The underlying prediction
-// may keep running server-side, but we stop waiting on it.
+// hangs (e.g. the model can't fetch a reference image), we abort it so the
+// request doesn't sit until the function timeout. Aborting via the replicate
+// client's signal also tears down the in-flight prediction instead of leaving
+// it running server-side (as the old Promise.race did).
 const NBP_CALL_TIMEOUT_MS = 90_000;
-
-function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
-  return Promise.race([
-    p,
-    new Promise<T>((_resolve, reject) =>
-      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
-    ),
-  ]);
-}
 
 export type NbpInput = {
   replicate: Replicate;
@@ -118,8 +112,11 @@ export type NbpInput = {
  * (NBP's pixel dims vary between runs, so we pin them for consistent cards).
  */
 export async function generateNbpThumbnail(input: NbpInput): Promise<Buffer> {
-  const out = await withTimeout(
-    input.replicate.run(NBP_MODEL, {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), NBP_CALL_TIMEOUT_MS);
+  let out: unknown;
+  try {
+    out = await input.replicate.run(NBP_MODEL, {
       input: {
         prompt: input.prompt,
         image_input: input.faceRefUrls ?? [],
@@ -127,10 +124,16 @@ export async function generateNbpThumbnail(input: NbpInput): Promise<Buffer> {
         resolution: input.resolution ?? '2K',
         output_format: 'jpg',
       },
-    }),
-    NBP_CALL_TIMEOUT_MS,
-    'nano-banana-pro'
-  );
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (controller.signal.aborted) {
+      throw new Error(`nano-banana-pro timed out after ${NBP_CALL_TIMEOUT_MS}ms`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
   const bytes = await toImageBytes(out);
   if (!bytes) throw new Error('Nano Banana Pro returned no image');
   return sharp(bytes).resize(1280, 720, { fit: 'cover', position: 'center' }).png().toBuffer();
