@@ -140,6 +140,20 @@ export default function Home() {
     setStatus('idle');
   };
 
+  // Billing UI only appears once a Stripe price is configured (NEXT_PUBLIC_…).
+  const billingOn = !!process.env.NEXT_PUBLIC_STRIPE_PRICE_ID;
+
+  const handleBillingRedirect = async (endpoint: '/api/checkout' | '/api/portal') => {
+    try {
+      const res = await fetch(endpoint, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.url) window.location.href = data.url;
+      else setError(data.error || t('form.errorNetwork'));
+    } catch {
+      setError(t('form.errorNetwork'));
+    }
+  };
+
   const handlePersonaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -265,6 +279,38 @@ export default function Home() {
                     {t('nav.remaining', { count: remaining, limit: profile!.generations_limit })}
                   </span>
                 )}
+                {profile?.plan === 'pro' ? (
+                  <button
+                    onClick={() => handleBillingRedirect('/api/portal')}
+                    style={{
+                      padding: '6px 12px',
+                      fontSize: 13,
+                      background: 'transparent',
+                      color: '#fff',
+                      border: '1px solid rgba(255,255,255,0.25)',
+                      borderRadius: 8,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {t('pricing.manage')}
+                  </button>
+                ) : billingOn ? (
+                  <button
+                    onClick={() => handleBillingRedirect('/api/checkout')}
+                    style={{
+                      padding: '6px 14px',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: '#0f0c29',
+                      background: 'linear-gradient(135deg, #a78bfa 0%, #f0abfc 100%)',
+                      border: 'none',
+                      borderRadius: 8,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {t('pricing.upgrade')}
+                  </button>
+                ) : null}
                 <span style={{ opacity: 0.85, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {user.email}
                 </span>

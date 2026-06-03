@@ -24,9 +24,22 @@ Competitor anchors: Samune (JP) ¥990/30, ¥1,980/60, ¥4,980/200 (1 credit = 1 
 
 `app/api/upload-persona/route.ts`: one Claude Haiku vision call after a 512px sharp downscale; rejects a confident no-face / multiple-faces (HTTP 422 → localized `persona.faceRejected`), FAIL-OPEN on any error/missing key/low confidence. Cost ~$0.001/upload.
 
-## 2. Stripe Pro subscription
+## 2. Stripe Pro subscription — CODE SHIPPED (inert until configured)
 
-- `npm i stripe`; `lib/stripe.ts` (let it default to the account's Basil API — do NOT pin an old apiVersion). Env: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (different for CLI vs deployed), `NEXT_PUBLIC_STRIPE_PRICE_ID`.
+The integration is in the repo and INERT until env vars are set: `lib/stripe.ts`, `app/api/checkout/route.ts`, `app/api/stripe/webhook/route.ts`, `app/api/portal/route.ts`, and the Upgrade/Manage buttons in `page.tsx` (shown only when `NEXT_PUBLIC_STRIPE_PRICE_ID` is set). It has NOT been tested against real Stripe — test in Stripe TEST mode before going live.
+
+**To ACTIVATE (founder, in order):**
+1. Stripe Dashboard (Test mode) → create Product "QuickThumb Pro" + a recurring monthly Price (set the ¥/$ amount — see §0). Copy the `price_…` id.
+2. Supabase SQL: `alter table profiles add column stripe_customer_id text unique, add column stripe_subscription_id text, add column subscription_status text, add column current_period_end timestamptz;`
+3. Vercel env (Production + Preview): `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PRICE_ID`, `STRIPE_WEBHOOK_SECRET` (from step 5), optional `STRIPE_PRO_GENERATIONS_LIMIT` (default 20).
+4. Stripe Dashboard → configure the Customer Portal (test AND live).
+5. Stripe Dashboard → Webhooks → add `https://<domain>/api/stripe/webhook`, subscribe to `checkout.session.completed` + `customer.subscription.updated` + `customer.subscription.deleted`; copy ITS signing secret into `STRIPE_WEBHOOK_SECRET`.
+6. Test (TEST mode): `stripe listen --forward-to localhost:3000/api/stripe/webhook` + a real checkout with card `4242 4242 4242 4242`; confirm the profile flips to `pro` + limit, and cancel via the portal downgrades it.
+7. Repeat Product/Price/Portal/Webhook in LIVE mode; swap to `sk_live_…` + live price id + live webhook secret.
+
+Implementation notes (what the shipped code does):
+
+- `lib/stripe.ts` lets the SDK default to the account's Basil API (no pinned apiVersion). Env: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (different for CLI vs deployed), `NEXT_PUBLIC_STRIPE_PRICE_ID`.
 - `profiles` += `stripe_customer_id` (unique), `stripe_subscription_id`, `subscription_status`, `current_period_end timestamptz`.
 - `app/api/checkout/route.ts`: subscription-mode Checkout Session, reuse one Stripe customer per user (`customer`, not `customer_email`), `client_reference_id = user.id`.
 - `app/api/stripe/webhook/route.ts` (`runtime = 'nodejs'`): read raw body with `await req.text()` (never JSON.parse first), verify with `stripe.webhooks.constructEventAsync`. Handle:

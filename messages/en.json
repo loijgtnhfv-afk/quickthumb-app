@@ -53,6 +53,10 @@
     "download": "Download",
     "imageOnly": "Image only"
   },
+  "pricing": {
+    "upgrade": "Upgrade to Pro",
+    "manage": "Manage plan"
+  },
   "footer": {
     "copyright": "© 2026 Quickthumb",
     "terms": "Terms",

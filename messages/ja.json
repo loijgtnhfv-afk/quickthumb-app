@@ -53,6 +53,10 @@
     "download": "ダウンロード",
     "imageOnly": "画像のみ"
   },
+  "pricing": {
+    "upgrade": "Proにアップグレード",
+    "manage": "プラン管理"
+  },
   "footer": {
     "copyright": "© 2026 Quickthumb",
     "terms": "利用規約",
