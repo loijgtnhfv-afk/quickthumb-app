@@ -6,7 +6,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Quickthumb — AI thumbnails from a YouTube URL",
-  description: "Paste a YouTube URL. Our AI watches your video, finds the click-worthy moment, and generates thumbnails proven to boost views.",
+  description: "Upload your face, paste your video URL, and get 4 finished, click-ready YouTube thumbnails — your face plus a bold hook baked into one image — in seconds. Free to start.",
   metadataBase: new URL("https://quickthumb.app"),
   icons: {
     icon: [
@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "Quickthumb — Paste a URL. Win the click.",
-    description: "AI watches your YouTube video and generates 4 click-tested thumbnails in 60 seconds.",
+    description: "Upload your face + a YouTube URL. Get 4 finished thumbnails — your face plus a bold hook — in seconds.",
     url: "https://quickthumb.app",
     siteName: "Quickthumb",
     images: ["/og-image.png"],
@@ -25,7 +25,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "Quickthumb — Paste a URL. Win the click.",
-    description: "AI watches your YouTube video and generates 4 click-tested thumbnails in 60 seconds.",
+    description: "Upload your face + a YouTube URL. Get 4 finished thumbnails — your face plus a bold hook — in seconds.",
     images: ["/og-image.png"],
   },
 };
