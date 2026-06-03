@@ -1,6 +1,6 @@
 # Quickthumb
 
-AI-powered YouTube thumbnail generator SaaS. Paste a YouTube URL, get 5 styled thumbnail options in ~60 seconds.
+AI-powered YouTube thumbnail generator SaaS. Upload your own face + paste a YouTube URL, get 4 finished, click-ready thumbnails (hero + scene + baked-in hook) in ~60 seconds.
 
 ## Status
 
@@ -88,12 +88,12 @@ package.json
 ## Database (Supabase)
 
 Tables:
-- `profiles` — id (FK auth.users), plan ('free' default), generations_used (int), generations_limit (5 default)
+- `profiles` — id (FK auth.users), plan ('free' default), generations_used (int), generations_limit (currently 2 default; see PHASE2.md §0 for the pending 1×4 free-tier decision). Stripe billing columns (`stripe_customer_id`, `stripe_subscription_id`, `subscription_status`, `current_period_end`) are added by the PHASE2.md §2 migration when billing is activated.
 - `generations` — id, user_id, youtube_url, youtube_video_id, video_title, video_description, channel_title, prompts[], thumbnail_urls[], status ('processing'|'completed'|'failed'), error_message
 - `usage_logs` — user_id, event_type, metadata (jsonb)
 
 Storage bucket:
-- `thumbnails` (public read) — path: `{user_id}/{generation_id}/thumb-{1-5}.png`
+- `thumbnails` (public read) — generated: `{user_id}/{generation_id}/thumb-{1-4}.png`; uploaded persona: `{user_id}/persona/{ts}.{ext}`
 
 RLS is set up. Anon key can read own profile / generations / usage_logs only.
 
@@ -102,8 +102,12 @@ RLS is set up. Anon key can read own profile / generations / usage_logs only.
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 - `SUPABASE_SECRET_KEY` (server-only, used in API route to bypass RLS for inserts/uploads)
-- `REPLICATE_API_TOKEN`
+- `REPLICATE_API_TOKEN` (Nano Banana Pro engine — `google/nano-banana-pro`)
 - `YOUTUBE_API_KEY`
+- `ANTHROPIC_API_KEY` (Haiku — hook/translation in `/api/generate` + persona face validation in `/api/upload-persona`; both FAIL-OPEN if absent)
+- Stripe (OPTIONAL — billing is inert until all are set; see PHASE2.md §2): `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PRICE_ID`, `STRIPE_WEBHOOK_SECRET`, optional `STRIPE_PRO_GENERATIONS_LIMIT`
+
+> NOTE: `vercel env pull` returns EMPTY values for Sensitive-flagged vars (all the API keys), so local generation/NBP previews need the real keys pasted into `.env.local` by hand.
 
 To run locally: `vercel env pull .env.local --environment=production --yes` (after `vercel link`). Or copy manually from Vercel project settings → Environment Variables.
 
@@ -162,6 +166,8 @@ Flux Schnell tries to render any CJK / kana / fullwidth glyphs it sees in the pr
 
 ## Decisions Already Made (don't re-litigate)
 
+> ⚠️ LEGACY (pre-2026-06-03 Flux/Satori pipeline). Superseded by appeal-pivot v2: the engine is now Nano Banana Pro (finished images), the face is the user's OWN uploaded persona, output is 4 thumbnails (no 5th quad/keyword), there is no separate "Image only" raw layer, and the free tier is being re-decided (see PHASE2.md §0). The descriptor auto-refresh cron still runs but `/api/generate` no longer consumes descriptors. Kept for historical context only.
+
 - **A option** chosen (4 separate AI images per style, parallel) over B option (1 shared bg). Cost moved from $0.003 → $0.012/gen, but each style now gets a visually appropriate scene. Replicate rate-limit OK above $5 balance.
 - **Per-card "Image only" download** alongside the styled "Download" — gives the user the raw text-free AI image for further editing.
 - **5th = keyword spotlight** with 4 different bgs tiled 2×2 + ONE central keyword (NOT the same caption ×4). User rejected the "tile composed thumbnails" version because it repeated the long title 4 times.
@@ -176,12 +182,16 @@ Flux Schnell tries to render any CJK / kana / fullwidth glyphs it sees in the pr
 - Stripe Pro plan pricing — leaning toward $9-19/month for 150 generations but not finalized.
 - Should we add OAuth to upload directly to user's YouTube channel? Big scope, defer.
 
-## Next Tasks (prioritized)
+## Next Tasks (prioritized) — appeal-pivot v2, 2026-06-03
 
-1. **Verify the 2026-05-25 style refresh** — new magazine slot, new vlog pill kicker, gaming yellow + ACTION! stamp, and CJK stripping in the Flux prompt. Watch real generations and confirm Japanese videos no longer get scribbled fake characters.
-2. **Persist raw URLs in DB** — `generations.thumbnail_urls` currently stores only composed URLs. Raw image URLs are only returned in the immediate API response; add a column if past-generation re-download is needed.
-3. **Implement Stripe Pro plan** (subscription, webhook to update profiles.plan + generations_limit, customer portal).
-4. **Launch** — X, Reddit (r/SideProject, r/SaaS), Indie Hackers, possibly Product Hunt.
+Most of what's left is FOUNDER-blocked (needs accounts / DB / DNS / a real prod run). See PHASE2.md for the detailed plan and the project memory for the running log.
+
+1. **Prod e2e test of v2** — sign in, upload your own face, paste your own video URL → expect 4 finished thumbs (face + hook). Watch the maxDuration=120 vs 4-parallel-NBP timeout (each NBP call now aborts at 90s in `lib/nbp.ts`); if it still times out, drop `NBP_CONCEPTS` to 3 or move to Vercel Pro.
+2. **Confirm the free tier + run the SQL** — recommended `generations_limit` default = 1 (1 gen × 4 img); see PHASE2.md §0.
+3. **Custom domain** — `quickthumb.app` apex + `app.` subdomain don't resolve; wire DNS in Vercel, then revert `metadataBase` in `app/layout.tsx` to `https://quickthumb.app`.
+4. **Activate Stripe** (code is shipped + dormant) — PHASE2.md §2 checklist; test in Stripe TEST mode first.
+5. **YouTube OAuth ownership** (longest lead, optional) — PHASE2.md §3.
+6. **Launch** — soft test with ~5-10 small YouTubers first, then X / Reddit / Indie Hackers.
 
 ## Workflow
 

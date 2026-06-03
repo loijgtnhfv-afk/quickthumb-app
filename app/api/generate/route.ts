@@ -153,6 +153,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'youtube_url is required' }, { status: 400 });
     }
 
+    // SECURITY / CONSENT: only accept a persona_url that points at THIS user's
+    // own uploaded persona in our public bucket. The UI gets this URL from
+    // /api/upload-persona (which face-validates and stores under
+    // {user.id}/persona/), but a direct API caller could otherwise pass ANY
+    // image URL — e.g. a third party's or a celebrity's photo — and bake that
+    // face in, bypassing the upload-time face check and the whole consent model
+    // the persona flow exists to enforce. Reject anything that isn't ours.
+    if (personaUrl) {
+      const base = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\/$/, '');
+      const allowedPrefix = `${base}/storage/v1/object/public/thumbnails/${user.id}/persona/`;
+      if (!base || !personaUrl.startsWith(allowedPrefix)) {
+        return NextResponse.json({ error: 'Invalid persona image' }, { status: 400 });
+      }
+    }
+
     const videoId = extractVideoId(youtubeUrl);
     if (!videoId) {
       return NextResponse.json({ error: 'Invalid YouTube URL' }, { status: 400 });
