@@ -22,6 +22,7 @@
     "errorInvalid": "That doesn’t look like a valid YouTube URL. Try https://youtube.com/watch?v=...",
     "errorOverLimit": "You’ve used all {limit} free generations. Upgrade to Pro for more.",
     "errorNetwork": "Network error. Please try again.",
+    "errorBusy": "Too many requests at once. Please wait a moment and try again.",
     "urlHint": "Works with youtube.com/watch, youtu.be, and Shorts links."
   },
   "persona": {

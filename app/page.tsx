@@ -213,6 +213,8 @@ export default function Home() {
       if (!res.ok) {
         if (res.status === 402) {
           setError(t('form.errorOverLimit', { limit: data.limit }));
+        } else if (res.status === 429) {
+          setError(t('form.errorBusy'));
         } else {
           setError(data.error || t('form.errorNetwork'));
         }

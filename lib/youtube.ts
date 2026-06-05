@@ -29,7 +29,10 @@ export async function fetchVideoMetadata(videoId: string): Promise<VideoMetadata
   const res = await fetch(url, { cache: 'no-store' });
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`YouTube API ${res.status}: ${body.slice(0, 300)}`);
+    // Log upstream detail server-side ONLY. Never surface it to the client: the
+    // body can carry quota/project hints, and the request URL holds the API key.
+    console.error(`YouTube API ${res.status}:`, body.slice(0, 300));
+    throw new Error('Could not fetch video metadata');
   }
   const data = await res.json();
   const item = data.items?.[0];

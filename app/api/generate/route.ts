@@ -64,7 +64,8 @@ async function analyzeForThumbnail(
   const needsTranslation = hasCJK(title) || hasCJK(channel) || hasCJK(description);
   try {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const msg = await anthropic.messages.create({
+    const msg = await anthropic.messages.create(
+      {
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 500,
       messages: [
@@ -83,7 +84,9 @@ Reply with ONLY this JSON, no preamble, no code fences:
 {"translation":{"title":"...","channel":"...","topic":"..."},"hooks_native":["...","...","...","..."],"hooks_en":["...","...","...","..."]}`,
         },
       ],
-    });
+      },
+      { timeout: 15_000 }
+    );
     const text = msg.content[0]?.type === 'text' ? msg.content[0].text.trim() : '';
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('No JSON object in LLM response');
@@ -130,6 +133,78 @@ async function uploadPng(
   return data.publicUrl;
 }
 
+type Reservation =
+  | { ok: true; plan: string; limit: number; usedBefore: number }
+  | { ok: false; status: 402 | 429 | 500; plan?: string; limit?: number };
+
+// Atomically reserve ONE generation slot BEFORE any paid NBP work. The old flow
+// read generations_used, checked the limit, did ~40s of paid work, then blindly
+// wrote `used + 1` from the stale snapshot — so N concurrent requests all passed
+// the check and each ran 4 × $0.134 NBP images (a TOCTOU money leak), and the
+// races also lost-update the counter. Compare-and-set (update guarded by the
+// value we just read) serializes concurrent callers: only `limit` of them can
+// ever claim a slot, and we never persist a stale value.
+async function reserveGenerationSlot(
+  admin: ReturnType<typeof createServiceClient>,
+  userId: string
+): Promise<Reservation> {
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const { data: profile, error } = await admin
+      .from('profiles')
+      .select('plan, generations_used, generations_limit')
+      .eq('id', userId)
+      .single();
+    if (error || !profile) return { ok: false, status: 500 };
+    const used = profile.generations_used as number;
+    const limit = profile.generations_limit as number;
+    if (used >= limit) return { ok: false, status: 402, plan: profile.plan as string, limit };
+    // CAS: claim the slot only if nobody moved generations_used since we read it.
+    // .select() returns the row ONLY when the guarded WHERE matched.
+    const { data: claimed, error: casErr } = await admin
+      .from('profiles')
+      .update({ generations_used: used + 1 })
+      .eq('id', userId)
+      .eq('generations_used', used)
+      .select('id');
+    if (casErr) return { ok: false, status: 500 };
+    if (claimed && claimed.length === 1) {
+      return { ok: true, plan: profile.plan as string, limit, usedBefore: used };
+    }
+    // Lost the race to a concurrent request — re-read and try again.
+  }
+  return { ok: false, status: 429 };
+}
+
+// Give a reserved slot back (best effort) when a generation produced nothing, so
+// a transient total failure doesn't burn the user's quota. Guarded CAS so it can
+// never over-credit under concurrency; never throws.
+async function refundGenerationSlot(
+  admin: ReturnType<typeof createServiceClient>,
+  userId: string
+): Promise<void> {
+  try {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const { data: profile, error } = await admin
+        .from('profiles')
+        .select('generations_used')
+        .eq('id', userId)
+        .single();
+      if (error || !profile) return;
+      const used = profile.generations_used as number;
+      if (used <= 0) return;
+      const { data: claimed } = await admin
+        .from('profiles')
+        .update({ generations_used: used - 1 })
+        .eq('id', userId)
+        .eq('generations_used', used)
+        .select('id');
+      if (claimed && claimed.length === 1) return;
+    }
+  } catch (e) {
+    console.warn('refundGenerationSlot failed (non-fatal):', e);
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -141,7 +216,8 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json().catch(() => ({}));
-    const youtubeUrl = typeof body.youtube_url === 'string' ? body.youtube_url.trim() : '';
+    const youtubeUrl =
+      typeof body.youtube_url === 'string' ? body.youtube_url.trim().slice(0, 2048) : '';
     // Face hero comes ONLY from the user's own uploaded photo (persona) — never
     // a third party's. The video URL is used for topic/hooks only. Without a
     // persona, NBP generates a faceless topical scene (legally safe).
@@ -163,7 +239,36 @@ export async function POST(request: NextRequest) {
     if (personaUrl) {
       const base = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\/$/, '');
       const allowedPrefix = `${base}/storage/v1/object/public/thumbnails/${user.id}/persona/`;
-      if (!base || !personaUrl.startsWith(allowedPrefix)) {
+      const allowedPath = `/storage/v1/object/public/thumbnails/${user.id}/persona/`;
+      // A prefix match alone is NOT enough: a URL like
+      // `${allowedPrefix}../../<otherUser>/persona/x.png` still startsWith the
+      // prefix yet can resolve into another user's namespace once an HTTP
+      // intermediary (or Storage's own decode chain) normalizes the `..`. A
+      // SINGLE decode is also insufficient — a double-encoded `%252e%252e%252f`
+      // survives one decodeURIComponent as the literal `%2e%2e%2f`, slipping
+      // past a `..` check. So fully resolve nested encodings (decode until
+      // stable) and reject any traversal / backslash, in addition to pinning the
+      // host+namespace prefix. A legitimate getPublicUrl persona path
+      // (`<uuid>/persona/<digits>.<ext>`) carries no encoding, so this never
+      // false-rejects a real upload.
+      let safe = false;
+      try {
+        let decodedPath = new URL(personaUrl).pathname;
+        for (let i = 0; i < 5; i++) {
+          const next = decodeURIComponent(decodedPath);
+          if (next === decodedPath) break;
+          decodedPath = next;
+        }
+        safe =
+          !!base &&
+          personaUrl.startsWith(allowedPrefix) &&
+          decodedPath.startsWith(allowedPath) &&
+          !decodedPath.includes('..') &&
+          !decodedPath.includes('\\');
+      } catch {
+        safe = false;
+      }
+      if (!safe) {
         return NextResponse.json({ error: 'Invalid persona image' }, { status: 400 });
       }
     }
@@ -218,6 +323,28 @@ export async function POST(request: NextRequest) {
     const prompts = NBP_CONCEPTS.map((c, i) => c.build(hookFor(c, i), topic, hasFace));
 
     const admin = createServiceClient();
+
+    // Atomically charge the quota slot now, immediately before the paid NBP work
+    // (after the cheap metadata/Haiku calls so an invalid URL never costs a slot).
+    // This is the real gate — the early read above is just a fast reject.
+    const reservation = await reserveGenerationSlot(admin, user.id);
+    if (!reservation.ok) {
+      if (reservation.status === 402) {
+        return NextResponse.json(
+          { error: 'Generation limit reached', plan: reservation.plan, limit: reservation.limit },
+          { status: 402 }
+        );
+      }
+      if (reservation.status === 429) {
+        return NextResponse.json(
+          { error: 'Too many requests in flight, please retry.' },
+          { status: 429 }
+        );
+      }
+      return NextResponse.json({ error: 'Could not start generation' }, { status: 500 });
+    }
+    const generationsUsedAfter = reservation.usedBefore + 1;
+
     const { data: insertRow, error: insertError } = await admin
       .from('generations')
       .insert({
@@ -233,6 +360,7 @@ export async function POST(request: NextRequest) {
       .select('id')
       .single();
     if (insertError || !insertRow) {
+      await refundGenerationSlot(admin, user.id); // nothing generated yet
       return NextResponse.json({ error: 'Failed to record generation' }, { status: 500 });
     }
     const generationId = insertRow.id as string;
@@ -265,21 +393,21 @@ export async function POST(request: NextRequest) {
             genError instanceof Error ? genError.message : 'Generation failed',
         })
         .eq('id', generationId);
-      const msg = genError instanceof Error ? genError.message : 'Generation failed';
-      return NextResponse.json({ error: msg }, { status: 500 });
+      // Nothing was produced — give the reserved slot back so a transient failure
+      // doesn't cost the user a generation.
+      await refundGenerationSlot(admin, user.id);
+      console.error('generate: all concepts failed', genError);
+      return NextResponse.json({ error: 'Generation failed, please try again.' }, { status: 500 });
     }
 
-    await admin
+    // Quota was already charged at reservation time, so no increment here.
+    const { error: completeErr } = await admin
       .from('generations')
       .update({ status: 'completed', thumbnail_urls: thumbs.map((t) => t.url) })
       .eq('id', generationId);
+    if (completeErr) console.error('generate: failed to mark completed', generationId, completeErr);
 
-    await admin
-      .from('profiles')
-      .update({ generations_used: profile.generations_used + 1 })
-      .eq('id', user.id);
-
-    await admin.from('usage_logs').insert({
+    const { error: logErr } = await admin.from('usage_logs').insert({
       user_id: user.id,
       event_type: 'generation_completed',
       metadata: {
@@ -290,6 +418,7 @@ export async function POST(request: NextRequest) {
         custom_text: customText || null,
       },
     });
+    if (logErr) console.error('generate: failed to write usage log', logErr);
 
     return NextResponse.json({
       id: generationId,
@@ -302,12 +431,17 @@ export async function POST(request: NextRequest) {
         concept_key: t.conceptKey,
         prompt: t.label,
       })),
-      generations_used: profile.generations_used + 1,
-      generations_limit: profile.generations_limit,
+      generations_used: generationsUsedAfter,
+      generations_limit: reservation.limit,
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Internal error';
-    console.error('API /generate error', msg);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error('API /generate error', err);
+    // "Video not found or private" is a useful, secret-free signal for the user;
+    // everything else stays generic so internal/upstream detail never leaks.
+    const m = err instanceof Error ? err.message : '';
+    if (m === 'Video not found or private') {
+      return NextResponse.json({ error: m }, { status: 404 });
+    }
+    return NextResponse.json({ error: 'Something went wrong, please try again.' }, { status: 500 });
   }
 }
