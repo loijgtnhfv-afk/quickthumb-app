@@ -36,8 +36,19 @@ const heroClause = (hasFace: boolean): string =>
     ? 'Use the person in the reference image as the large hero subject and KEEP THEIR FACE AND IDENTITY clearly recognizable (same person)'
     : 'Feature one clear, bold hero subject closely tied to the topic';
 
-const legible = (hook: string): string =>
-  `The text must read precisely「${hook}」, be large, bold and perfectly legible, and must not overlap or be covered by the hero subject.`;
+const legible = (hook: string): string => {
+  // NBP renders the 「」 corner brackets literally when they wrap a Latin hook
+  // (it baked a stray 「I QUIT」), but correctly treats them as quoting
+  // punctuation for Japanese (まさかの結末 rendered with no brackets). So only
+  // wrap when the hook actually contains CJK/kana; Latin hooks (the global-clean
+  // concept) get no brackets. >= 0x3000 covers kana + CJK + fullwidth; Latin and
+  // basic punctuation are all below it, so no \u escapes / CJK literals needed.
+  const hasCjk = [...hook].some((c) => c.charCodeAt(0) >= 0x3000);
+  // JP branch is byte-identical to the prod-validated wording (no leading space);
+  // only the Latin branch changes (bare hook, no brackets).
+  const phrase = hasCjk ? `precisely「${hook}」` : `precisely ${hook}`;
+  return `The text must read ${phrase}, be large, bold and perfectly legible, and must not overlap or be covered by the hero subject.`;
+};
 
 // Keep the hook the only text. Two failure modes seen in testing: (a) NBP
 // invents stray garbled scene labels (a misspelled "ポケモンテーマパーク"), and
