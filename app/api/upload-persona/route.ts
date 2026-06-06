@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
@@ -6,7 +7,10 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 export const runtime = 'nodejs';
 export const maxDuration = 30;
 
-const MAX_BYTES = 8 * 1024 * 1024;
+// Vercel Serverless Functions reject request bodies over ~4.5MB at the platform
+// edge (an opaque 413) before our handler runs, so cap below that to return a
+// clear, localizable error instead of the platform's generic failure.
+const MAX_BYTES = 4 * 1024 * 1024;
 const ALLOWED = ['image/png', 'image/jpeg', 'image/webp'];
 
 // Validate the uploaded image actually shows ONE clear human face before we keep
@@ -78,11 +82,22 @@ export async function POST(request: NextRequest) {
     if (!(file instanceof File)) {
       return NextResponse.json({ error: 'file is required' }, { status: 400 });
     }
+    // Likeness-consent gate (defense-in-depth behind the UI checkbox): a face
+    // photo may only be uploaded with an explicit "this is my own face / I have
+    // the right to use it" attestation. A direct API caller must assert it too;
+    // we record the attestation below. Right-of-publicity has no safe harbor, so
+    // the consent must be affirmative, not implied.
+    if (form?.get('consent') !== 'true') {
+      return NextResponse.json(
+        { error: 'Consent is required to upload a face photo.', code: 'consent' },
+        { status: 400 }
+      );
+    }
     if (!ALLOWED.includes(file.type)) {
       return NextResponse.json({ error: 'Use a PNG, JPG or WebP image' }, { status: 400 });
     }
     if (file.size > MAX_BYTES) {
-      return NextResponse.json({ error: 'Image too large (max 8MB)' }, { status: 400 });
+      return NextResponse.json({ error: 'Image too large (max 4MB)', code: 'too_large' }, { status: 400 });
     }
 
     const buf = Buffer.from(await file.arrayBuffer());
@@ -96,20 +111,74 @@ export async function POST(request: NextRequest) {
     }
 
     const ext = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg';
-    // Timestamped path so a re-upload busts the CDN cache for the public URL.
-    const path = `${user.id}/persona/${Date.now()}.${ext}`;
+    // Timestamped (+random) path: busts the CDN cache on re-upload and avoids a
+    // same-millisecond name collision. The leading epoch-ms is parsed by the
+    // cleanup below to delete only strictly-older personas.
+    const ts = Date.now();
+    const path = `${user.id}/persona/${ts}-${randomUUID()}.${ext}`;
 
     const admin = createServiceClient();
     const { error } = await admin.storage
       .from('thumbnails')
       .upload(path, buf, { contentType: file.type, upsert: true });
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      // Log the raw storage error server-side only; return a generic message.
+      console.error('persona upload storage error:', error);
+      return NextResponse.json({ error: 'Upload failed. Please try again.' }, { status: 500 });
     }
     const { data } = admin.storage.from('thumbnails').getPublicUrl(path);
+
+    // Record the likeness-consent attestation (audit trail for right-of-publicity:
+    // who consented, when, from where). Best-effort — never block the upload on a
+    // logging failure.
+    try {
+      const ip =
+        request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+        request.headers.get('x-real-ip') ||
+        null;
+      const { error: logErr } = await admin.from('usage_logs').insert({
+        user_id: user.id,
+        event_type: 'persona_consent',
+        metadata: {
+          consent: true,
+          path,
+          ip,
+          user_agent: request.headers.get('user-agent') || null,
+          at: new Date().toISOString(),
+        },
+      });
+      // Surface a DB-level failure (supabase-js returns it, doesn't throw) so a
+      // broken consent audit trail is observable; still never block the upload.
+      if (logErr) console.warn('persona consent log failed (non-fatal):', logErr);
+    } catch (e) {
+      console.warn('persona consent log failed (non-fatal):', e);
+    }
+
+    // Bound storage growth: keep only the just-uploaded persona; delete older ones
+    // (every re-upload otherwise leaves a new timestamped object forever).
+    try {
+      const { data: existing } = await admin.storage
+        .from('thumbnails')
+        .list(`${user.id}/persona`, { limit: 100 });
+      // Delete only personas STRICTLY OLDER than this upload (compare the leading
+      // epoch-ms in the name). Never remove a same-or-newer object, so a
+      // concurrent same-user upload can't have its just-returned file deleted out
+      // from under it. `o.id` skips folder placeholders the API can return.
+      const stale = (existing || [])
+        .filter((o) => o.id)
+        .filter((o) => {
+          const ots = parseInt(o.name, 10);
+          return Number.isFinite(ots) && ots < ts;
+        })
+        .map((o) => `${user.id}/persona/${o.name}`);
+      if (stale.length) await admin.storage.from('thumbnails').remove(stale);
+    } catch (e) {
+      console.warn('persona cleanup failed (non-fatal):', e);
+    }
+
     return NextResponse.json({ url: data.publicUrl });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Internal error';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error('upload-persona error', err);
+    return NextResponse.json({ error: 'Upload failed. Please try again.' }, { status: 500 });
   }
 }

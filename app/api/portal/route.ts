@@ -36,7 +36,11 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json({ url: portal.url });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Internal error';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    // Log server-side only; never surface raw Stripe/internal detail to the client.
+    console.error('portal error', err);
+    return NextResponse.json(
+      { error: 'Could not open the billing portal. Please try again.' },
+      { status: 500 }
+    );
   }
 }

@@ -25,9 +25,10 @@ export async function POST(request: NextRequest) {
   try {
     event = await stripe.webhooks.constructEventAsync(body, sig, secret);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'bad signature';
-    console.warn('stripe webhook signature failed:', msg);
-    return new Response(`bad signature: ${msg}`, { status: 400 });
+    // Log the verification detail server-side; return only a generic message so
+    // we don't reflect attacker-controlled / internal detail in the 400 body.
+    console.warn('stripe webhook signature failed:', err instanceof Error ? err.message : err);
+    return new Response('invalid signature', { status: 400 });
   }
 
   const admin = createServiceClient();

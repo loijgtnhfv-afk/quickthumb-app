@@ -102,6 +102,9 @@ export default function Home() {
   const [personaUrl, setPersonaUrl] = useState<string | null>(null);
   const [personaUploading, setPersonaUploading] = useState(false);
   const [personaError, setPersonaError] = useState('');
+  // Affirmative likeness consent — required before a face photo can be uploaded
+  // (right-of-publicity). Gates the file input; also sent to / enforced by the API.
+  const [personaConsent, setPersonaConsent] = useState(false);
   const [customText, setCustomText] = useState('');
 
   useEffect(() => {
@@ -157,16 +160,28 @@ export default function Home() {
   const handlePersonaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!personaConsent) {
+      setPersonaError(t('persona.consentRequired'));
+      e.target.value = '';
+      return;
+    }
     setPersonaError('');
     setPersonaUploading(true);
     try {
       const fd = new FormData();
       fd.append('file', file);
+      fd.append('consent', 'true');
       const res = await fetch('/api/upload-persona', { method: 'POST', body: fd });
       const data = await res.json();
       if (!res.ok) {
         setPersonaError(
-          res.status === 422 ? t('persona.faceRejected') : data.error || t('persona.uploadError')
+          res.status === 422
+            ? t('persona.faceRejected')
+            : data.code === 'too_large'
+            ? t('persona.tooLarge')
+            : data.code === 'consent'
+            ? t('persona.consentRequired')
+            : data.error || t('persona.uploadError')
         );
         return;
       }
@@ -527,8 +542,8 @@ export default function Home() {
                   color: '#0f0c29',
                   background: 'linear-gradient(135deg, #a78bfa 0%, #f0abfc 100%)',
                   borderRadius: 999,
-                  cursor: personaUploading ? 'wait' : 'pointer',
-                  opacity: personaUploading ? 0.6 : 1,
+                  cursor: personaUploading ? 'wait' : personaConsent ? 'pointer' : 'not-allowed',
+                  opacity: personaUploading || !personaConsent ? 0.5 : 1,
                   whiteSpace: 'nowrap',
                 }}
               >
@@ -541,7 +556,7 @@ export default function Home() {
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
                   onChange={handlePersonaUpload}
-                  disabled={personaUploading}
+                  disabled={personaUploading || !personaConsent}
                   style={{ display: 'none' }}
                 />
               </label>
@@ -566,7 +581,47 @@ export default function Home() {
             {personaError && (
               <div style={{ marginTop: 10, fontSize: 13, color: '#fecaca' }}>{personaError}</div>
             )}
-            <div style={{ fontSize: 11, opacity: 0.5, marginTop: 10 }}>{t('persona.consent')}</div>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 8,
+                fontSize: 11,
+                opacity: 0.75,
+                marginTop: 12,
+                cursor: 'pointer',
+                lineHeight: 1.5,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={personaConsent}
+                onChange={(e) => setPersonaConsent(e.target.checked)}
+                style={{ marginTop: 2, accentColor: '#a78bfa', flexShrink: 0 }}
+              />
+              <span>{t('persona.consentCheck')}</span>
+            </label>
+            {/* Links live OUTSIDE the <label> so opening a policy doesn't toggle consent */}
+            <div style={{ fontSize: 11, opacity: 0.55, marginTop: 6 }}>
+              <a
+                href="/terms.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: '#c4b5fd', textDecoration: 'underline' }}
+              >
+                {t('footer.terms')}
+              </a>
+              {' · '}
+              <a
+                href="/privacy.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: '#c4b5fd', textDecoration: 'underline' }}
+              >
+                {t('footer.privacy')}
+              </a>
+            </div>
+            <div style={{ fontSize: 11, opacity: 0.5, marginTop: 8 }}>{t('persona.consent')}</div>
           </div>
 
           <div style={{ marginTop: 14 }}>

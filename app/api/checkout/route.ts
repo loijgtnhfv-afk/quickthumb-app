@@ -47,8 +47,12 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json({ url: session.url });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Internal error';
-    console.error('checkout error', msg);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    // Log the raw Stripe/internal error server-side only; never return it to the
+    // client (it can carry account/config detail).
+    console.error('checkout error', err);
+    return NextResponse.json(
+      { error: 'Could not start checkout. Please try again.' },
+      { status: 500 }
+    );
   }
 }

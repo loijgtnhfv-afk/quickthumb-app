@@ -33,7 +33,10 @@
     "remove": "Remove",
     "uploading": "Uploading...",
     "uploadError": "Upload failed. Try another image.",
-    "consent": "Upload only your own photo (or one you have the right to use). Without a photo, thumbnails are generated without a face.",
+    "consent": "Without a photo, thumbnails are generated without a face.",
+    "consentCheck": "I confirm this is my own face, or a photo I have the right to use.",
+    "consentRequired": "Please tick the consent box before uploading your photo.",
+    "tooLarge": "That image is too large (max 4MB). Try a smaller photo.",
     "faceRejected": "We couldn’t find a single clear face in that photo. Upload a clear, front-facing photo of just your face."
   },
   "caption": {
