@@ -4,6 +4,7 @@ import sharp from 'sharp';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { isRateLimited } from '@/lib/rate-limit';
+import { PERSONA_BUCKET, ensurePersonaBucket } from '@/lib/personas';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -66,8 +67,9 @@ async function faceCheck(buf: Buffer): Promise<{ reject: boolean; reason?: strin
 
 // Upload the user's OWN face photo ("persona"). It becomes the identity
 // reference fed to Nano Banana Pro, so the generated face is the user's own
-// (consent) rather than a third party's. Stored in the public `thumbnails`
-// bucket so Replicate can fetch it as an image_input URL.
+// (consent) rather than a third party's. Stored in the PRIVATE `personas`
+// bucket; Replicate fetches it via a short-lived signed URL minted at
+// generation time (the object is never publicly readable).
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -130,21 +132,28 @@ export async function POST(request: NextRequest) {
     }
 
     const ext = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg';
-    // Timestamped (+random) path: busts the CDN cache on re-upload and avoids a
-    // same-millisecond name collision. The leading epoch-ms is parsed by the
-    // cleanup below to delete only strictly-older personas.
+    // Timestamped (+random) key in the user's namespace. The leading epoch-ms is
+    // parsed by the cleanup below to delete only strictly-older personas.
     const ts = Date.now();
-    const path = `${user.id}/persona/${ts}-${randomUUID()}.${ext}`;
+    const path = `${user.id}/${ts}-${randomUUID()}.${ext}`;
 
+    // Store in the PRIVATE personas bucket (never the public thumbnails bucket) so
+    // the user's face photo is not publicly readable. Created on demand.
+    await ensurePersonaBucket(admin);
     const { error } = await admin.storage
-      .from('thumbnails')
+      .from(PERSONA_BUCKET)
       .upload(path, buf, { contentType: file.type, upsert: true });
     if (error) {
       // Log the raw storage error server-side only; return a generic message.
       console.error('persona upload storage error:', error);
       return NextResponse.json({ error: 'Upload failed. Please try again.' }, { status: 500 });
     }
-    const { data } = admin.storage.from('thumbnails').getPublicUrl(path);
+    // Short-lived signed URL for the client to PREVIEW the upload (the object is
+    // private). Generation re-signs a fresh URL from the returned `path`, so a
+    // preview expiring never affects generation.
+    const { data: signed } = await admin.storage
+      .from(PERSONA_BUCKET)
+      .createSignedUrl(path, 3600);
 
     // Record the likeness-consent attestation (audit trail for right-of-publicity:
     // who consented, when, from where). Best-effort — never block the upload on a
@@ -176,8 +185,8 @@ export async function POST(request: NextRequest) {
     // (every re-upload otherwise leaves a new timestamped object forever).
     try {
       const { data: existing } = await admin.storage
-        .from('thumbnails')
-        .list(`${user.id}/persona`, { limit: 100 });
+        .from(PERSONA_BUCKET)
+        .list(user.id, { limit: 100 });
       // Delete only personas STRICTLY OLDER than this upload (compare the leading
       // epoch-ms in the name). Never remove a same-or-newer object, so a
       // concurrent same-user upload can't have its just-returned file deleted out
@@ -188,13 +197,15 @@ export async function POST(request: NextRequest) {
           const ots = parseInt(o.name, 10);
           return Number.isFinite(ots) && ots < ts;
         })
-        .map((o) => `${user.id}/persona/${o.name}`);
-      if (stale.length) await admin.storage.from('thumbnails').remove(stale);
+        .map((o) => `${user.id}/${o.name}`);
+      if (stale.length) await admin.storage.from(PERSONA_BUCKET).remove(stale);
     } catch (e) {
       console.warn('persona cleanup failed (non-fatal):', e);
     }
 
-    return NextResponse.json({ url: data.publicUrl });
+    // `path` is the stable identifier the client passes to /api/generate (which
+    // re-signs it); `url` is only for the in-session preview.
+    return NextResponse.json({ url: signed?.signedUrl ?? null, path });
   } catch (err) {
     console.error('upload-persona error', err);
     return NextResponse.json({ error: 'Upload failed. Please try again.' }, { status: 500 });

@@ -100,6 +100,9 @@ export default function Home() {
   // The user's own uploaded face photo (persona). When set, NBP makes it the
   // hero of every thumbnail; when null, thumbnails are generated faceless.
   const [personaUrl, setPersonaUrl] = useState<string | null>(null);
+  // Stable storage key sent to /api/generate (re-signed server-side). `personaUrl`
+  // above is only the short-lived signed URL for the in-page preview.
+  const [personaPath, setPersonaPath] = useState<string | null>(null);
   const [personaUploading, setPersonaUploading] = useState(false);
   const [personaError, setPersonaError] = useState('');
   // Affirmative likeness consent — required before a face photo can be uploaded
@@ -188,6 +191,7 @@ export default function Home() {
         return;
       }
       setPersonaUrl(data.url);
+      setPersonaPath(data.path);
     } catch {
       setPersonaError(t('persona.uploadError'));
     } finally {
@@ -222,7 +226,7 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           youtube_url: url,
-          persona_url: personaUrl,
+          persona_path: personaPath,
           custom_text: customText.trim(),
         }),
       });
@@ -565,7 +569,10 @@ export default function Home() {
               {personaUrl && !personaUploading && (
                 <button
                   type="button"
-                  onClick={() => setPersonaUrl(null)}
+                  onClick={() => {
+                    setPersonaUrl(null);
+                    setPersonaPath(null);
+                  }}
                   style={{
                     padding: '8px 12px',
                     fontSize: 13,

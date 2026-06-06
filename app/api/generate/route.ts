@@ -5,6 +5,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { generateNbpThumbnail, NBP_CONCEPTS } from '@/lib/nbp';
 import { extractVideoId, fetchVideoMetadata } from '@/lib/youtube';
 import { isRateLimited } from '@/lib/rate-limit';
+import { PERSONA_BUCKET, isValidPersonaPath } from '@/lib/personas';
 
 // 4 parallel Nano Banana Pro calls normally finish in ~40s. Each call has its
 // own 90s timeout in lib/nbp, so cap the function at 120s — a hung generation
@@ -221,8 +222,9 @@ export async function POST(request: NextRequest) {
       typeof body.youtube_url === 'string' ? body.youtube_url.trim().slice(0, 2048) : '';
     // Face hero comes ONLY from the user's own uploaded photo (persona) — never
     // a third party's. The video URL is used for topic/hooks only. Without a
-    // persona, NBP generates a faceless topical scene (legally safe).
-    const personaUrl = typeof body.persona_url === 'string' ? body.persona_url.trim() : '';
+    // persona, NBP generates a faceless topical scene (legally safe). The client
+    // sends the storage PATH (not a URL); we re-sign a short-lived URL below.
+    const personaPath = typeof body.persona_path === 'string' ? body.persona_path.trim() : '';
     const customTextRaw =
       typeof body.custom_text === 'string' ? body.custom_text.trim() : '';
     const customText = customTextRaw.slice(0, 60);
@@ -230,48 +232,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'youtube_url is required' }, { status: 400 });
     }
 
-    // SECURITY / CONSENT: only accept a persona_url that points at THIS user's
-    // own uploaded persona in our public bucket. The UI gets this URL from
-    // /api/upload-persona (which face-validates and stores under
-    // {user.id}/persona/), but a direct API caller could otherwise pass ANY
-    // image URL — e.g. a third party's or a celebrity's photo — and bake that
-    // face in, bypassing the upload-time face check and the whole consent model
-    // the persona flow exists to enforce. Reject anything that isn't ours.
-    if (personaUrl) {
-      const base = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\/$/, '');
-      const allowedPrefix = `${base}/storage/v1/object/public/thumbnails/${user.id}/persona/`;
-      const allowedPath = `/storage/v1/object/public/thumbnails/${user.id}/persona/`;
-      // A prefix match alone is NOT enough: a URL like
-      // `${allowedPrefix}../../<otherUser>/persona/x.png` still startsWith the
-      // prefix yet can resolve into another user's namespace once an HTTP
-      // intermediary (or Storage's own decode chain) normalizes the `..`. A
-      // SINGLE decode is also insufficient — a double-encoded `%252e%252e%252f`
-      // survives one decodeURIComponent as the literal `%2e%2e%2f`, slipping
-      // past a `..` check. So fully resolve nested encodings (decode until
-      // stable) and reject any traversal / backslash, in addition to pinning the
-      // host+namespace prefix. A legitimate getPublicUrl persona path
-      // (`<uuid>/persona/<digits>.<ext>`) carries no encoding, so this never
-      // false-rejects a real upload.
-      let safe = false;
-      try {
-        let decodedPath = new URL(personaUrl).pathname;
-        for (let i = 0; i < 5; i++) {
-          const next = decodeURIComponent(decodedPath);
-          if (next === decodedPath) break;
-          decodedPath = next;
-        }
-        safe =
-          !!base &&
-          personaUrl.startsWith(allowedPrefix) &&
-          decodedPath.startsWith(allowedPath) &&
-          !decodedPath.includes('..') &&
-          !decodedPath.includes('\\');
-      } catch {
-        safe = false;
-      }
-      if (!safe) {
-        return NextResponse.json({ error: 'Invalid persona image' }, { status: 400 });
-      }
+    // SECURITY / CONSENT: only accept a persona PATH inside THIS user's own
+    // namespace in the private personas bucket. The UI gets this path from
+    // /api/upload-persona (which face-validates, records consent, and stores it).
+    // A direct API caller could otherwise pass an arbitrary path — e.g. another
+    // user's object — so validate strictly (no traversal/encoding/other
+    // namespace) BEFORE we sign a URL for it. We never accept a client URL, so
+    // there is no URL to be tricked by; we re-sign server-side from the path.
+    if (personaPath && !isValidPersonaPath(personaPath, user.id)) {
+      return NextResponse.json({ error: 'Invalid persona image' }, { status: 400 });
     }
 
     const videoId = extractVideoId(youtubeUrl);
@@ -330,8 +299,24 @@ export async function POST(request: NextRequest) {
     const fbNative = fallbackHook(meta.title, 12);
     const fbEn = (en?.title || meta.title).slice(0, 24);
 
-    // Identity reference = the user's own uploaded persona photo, if any.
-    const faceRefUrls = personaUrl ? [personaUrl] : [];
+    // Identity reference = a FRESH short-lived signed URL for the user's own
+    // persona in the PRIVATE bucket — re-signed here so it can't expire between
+    // upload and generate and the object is never public. NBP (Replicate) fetches
+    // it within the TTL. A faceless request (no persona) skips this entirely.
+    let faceRefUrls: string[] = [];
+    if (personaPath) {
+      const { data: signed, error: signErr } = await admin.storage
+        .from(PERSONA_BUCKET)
+        .createSignedUrl(personaPath, 600);
+      if (signErr || !signed?.signedUrl) {
+        console.error('persona sign failed:', signErr);
+        return NextResponse.json(
+          { error: 'Could not load your uploaded photo. Please re-upload and try again.' },
+          { status: 400 }
+        );
+      }
+      faceRefUrls = [signed.signedUrl];
+    }
     const hasFace = faceRefUrls.length > 0;
 
     // Per-concept hook: user's custom overlay wins; else an LLM hook in the
