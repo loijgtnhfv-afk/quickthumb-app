@@ -2,7 +2,9 @@
 
 Drafted 2026-06-03 from a web-grounded research pass (Stripe / Supabase / Google / Anthropic primary docs). Phase-1 (Nano Banana Pro engine + persona face upload) is live; this is what's next.
 
-## 0. Pricing — DECISION NEEDED (most important, blocks Stripe)
+## 0. Pricing — FREE TIER DECIDED 2026-06-06 (Pro/Pro Max prices below, confirm at Stripe activation)
+
+> **DECIDED 2026-06-06:** FREE = **1 generation × 4 images** ($0.54/signup). Set `generations_limit` default to 1 (4-image cap is already enforced in code by `NBP_CONCEPTS.length`). PRO = $18 / ¥2,880 / 20 gen, PRO MAX = $39 / ¥6,200 / 45 gen (locked in for Stripe activation, §2). The SQL is in "SQL to apply" below.
 
 Hard cost (verified 2026-06-03): NBP standard = **$0.134/image**, so 4-image generation = **~$0.54/gen**. Google's **Batch API halves it** ($0.067/img → $0.27/gen) but is queue-based, not real-time, and would require moving off Replicate to the native Gemini API (`gemini-3-pro-image`) — a separate engine-integration task (see §0.3).
 

@@ -7,7 +7,7 @@ AI-powered YouTube thumbnail generator SaaS. Upload your own face + paste a YouT
 - **Live**: https://quickthumb-app.vercel.app/ (custom domain quickthumb.app NOT wired up yet — apex + app. subdomain both fail to resolve as of 2026-06-03; `metadataBase` points at the Vercel origin until DNS is configured in Vercel)
 - **GitHub**: github.com/loijgtnhfv-afk/quickthumb-app
 - **Vercel**: sano-s-projects1/quickthumb-app
-- **Stage**: Appeal pivot v2 LIVE (2026-06-03) — engine is Nano Banana Pro generating FINISHED thumbnails; the face comes from the user's OWN uploaded photo. Pre-launch (no Stripe yet). Free tier: 2 generations × 4 images.
+- **Stage**: Appeal pivot v2 LIVE (2026-06-03) — engine is Nano Banana Pro generating FINISHED thumbnails; the face comes from the user's OWN uploaded photo. Pre-launch (no Stripe yet). Free tier: 1 generation × 4 images (decided 2026-06-06; set `generations_limit` default to 1).
 
 ## Owner
 
@@ -88,7 +88,7 @@ package.json
 ## Database (Supabase)
 
 Tables:
-- `profiles` — id (FK auth.users), plan ('free' default), generations_used (int), generations_limit (currently 2 default; see PHASE2.md §0 for the pending 1×4 free-tier decision). Stripe billing columns (`stripe_customer_id`, `stripe_subscription_id`, `subscription_status`, `current_period_end`) are added by the PHASE2.md §2 migration when billing is activated.
+- `profiles` — id (FK auth.users), plan ('free' default), generations_used (int), generations_limit (free-tier DECIDED 2026-06-06 = 1 gen × 4 img; set the column default to 1 — see PHASE2.md §0). Stripe billing columns (`stripe_customer_id`, `stripe_subscription_id`, `subscription_status`, `current_period_end`) are added by the PHASE2.md §2 migration when billing is activated.
 - `generations` — id, user_id, youtube_url, youtube_video_id, video_title, video_description, channel_title, prompts[], thumbnail_urls[], status ('processing'|'completed'|'failed'), error_message
 - `usage_logs` — user_id, event_type, metadata (jsonb)
 
