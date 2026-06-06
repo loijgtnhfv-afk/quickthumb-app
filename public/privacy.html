@@ -21,7 +21,7 @@
 <div class="wrap">
   <p class="back"><a href="/">← Quickthumb</a></p>
   <h1>Privacy Policy</h1>
-  <p class="muted">Last updated: 2026-06-03</p>
+  <p class="muted">Last updated: 2026-06-06</p>
 
   <p>This policy explains what Quickthumb ("we", "us") collects and how we use it.</p>
 
@@ -33,15 +33,21 @@
     <li><strong>Basic usage logs</strong> — to operate and improve the Service.</li>
   </ul>
 
-  <h2>How we use your photo</h2>
-  <p>A photo you upload is stored in our cloud storage and sent to our AI image provider to generate your thumbnails. We do <strong>not</strong> sell your photos or use them to train models. You can remove your uploaded photo at any time, and you can request deletion of your data by contacting us.</p>
+  <h2>How we use your face photo</h2>
+  <p>If you upload a face photo, we treat it as sensitive likeness data and process it <strong>only with your explicit consent</strong> — the consent checkbox you tick before uploading is the legal basis for processing it. Specifically, the photo is:</p>
+  <ul>
+    <li>stored in a <strong>private</strong> storage bucket — it is never publicly readable, and our AI providers receive it only through short-lived, expiring signed links;</li>
+    <li>sent to <strong>Replicate &amp; Google (Nano Banana Pro)</strong> to generate your thumbnails, and to <strong>Anthropic</strong> for an automated check that the photo contains a single clear face (we only detect and count faces — never identity recognition);</li>
+    <li><strong>not</strong> sold, and <strong>not</strong> used to train AI models.</li>
+  </ul>
+  <p>We keep only your most recent photo — uploading a new one deletes the previous one. You can remove your photo in the app at any time, and you can request deletion of your account and all associated data by emailing <a href="mailto:support@quickthumb.app">support@quickthumb.app</a>.</p>
 
   <h2>Service providers (subprocessors)</h2>
   <p>We share data with the providers needed to run the Service:</p>
   <ul>
     <li><strong>Supabase</strong> — authentication, database, and file storage.</li>
     <li><strong>Replicate &amp; Google (Gemini / Nano Banana Pro)</strong> — AI image generation (receives your uploaded photo and prompts).</li>
-    <li><strong>Anthropic</strong> — generating short text hooks from your video metadata.</li>
+    <li><strong>Anthropic</strong> — generating short text hooks from your video metadata, and an automated face-presence check on an uploaded photo (counts faces only, never identity).</li>
     <li><strong>YouTube Data API (Google)</strong> — reading public metadata for the URL you submit.</li>
     <li><strong>Vercel</strong> — application hosting.</li>
   </ul>
@@ -50,7 +56,7 @@
   <p>We use cookies for sign-in sessions and to remember your language preference. We do not use them for advertising.</p>
 
   <h2>Data retention &amp; your rights</h2>
-  <p>We keep your data while your account is active. You may request access to, correction of, or deletion of your personal data — including uploaded photos and generated images — by contacting us.</p>
+  <p>We keep your data while your account is active. Your uploaded face photo is handled more strictly: we retain only the most recent one (a new upload deletes the previous), and you can remove it in the app at any time. You may request access to, correction of, or deletion of your personal data — including photos and generated images — by emailing <a href="mailto:support@quickthumb.app">support@quickthumb.app</a>.</p>
 
   <h2>Contact</h2>
   <p><a href="mailto:support@quickthumb.app">support@quickthumb.app</a></p>
@@ -58,7 +64,7 @@
   <hr />
 
   <h1>プライバシーポリシー（日本語）</h1>
-  <p class="muted">最終更新日: 2026-06-03</p>
+  <p class="muted">最終更新日: 2026-06-06</p>
   <p>本ポリシーは、Quickthumb（以下「当社」）が取得する情報とその利用方法について説明します。</p>
 
   <h2>取得する情報</h2>
@@ -69,14 +75,20 @@
     <li><strong>基本的な利用ログ</strong> — サービスの運用・改善のため。</li>
   </ul>
 
-  <h2>写真の利用方法</h2>
-  <p>アップロードされた写真は当社のクラウドストレージに保存し、サムネイル生成のためAI画像プロバイダへ送信します。写真の販売やモデル学習への利用は<strong>行いません</strong>。アップロードした写真はいつでも削除でき、お問い合わせによりデータの削除を請求できます。</p>
+  <h2>顔写真の利用方法</h2>
+  <p>顔写真をアップロードする場合、当社はこれを取扱いに注意を要する肖像データとして扱い、<strong>あなたの明示的な同意がある場合に限り</strong>処理します（アップロード前にチェックする同意ボックスが処理の法的根拠です）。具体的には、写真は次のように扱われます。</p>
+  <ul>
+    <li><strong>非公開（プライベート）</strong>のストレージに保存され、一般に閲覧可能になることはありません。AIプロバイダへは、有効期限の短い署名付きリンク経由でのみ渡されます。</li>
+    <li>サムネイル生成のため <strong>Replicate・Google（Nano Banana Pro）</strong> に、また写真に明瞭な顔が1つ写っているかの自動チェックのため <strong>Anthropic</strong> に送信されます（顔の有無と数の検出のみで、個人の識別は行いません）。</li>
+    <li>販売することは<strong>なく</strong>、AIモデルの学習に利用することも<strong>ありません</strong>。</li>
+  </ul>
+  <p>保持するのは最新の写真のみで、新しい写真をアップロードすると以前のものは削除されます。アプリ上でいつでも写真を削除でき、アカウントおよび関連データすべての削除は <a href="mailto:support@quickthumb.app">support@quickthumb.app</a> へのご連絡で請求できます。</p>
 
   <h2>委託先（サブプロセッサ）</h2>
   <ul>
     <li><strong>Supabase</strong> — 認証・データベース・ファイル保存。</li>
     <li><strong>Replicate・Google（Gemini / Nano Banana Pro）</strong> — AI画像生成（アップロード写真とプロンプトを受領）。</li>
-    <li><strong>Anthropic</strong> — 動画メタデータから短いフック文言を生成。</li>
+    <li><strong>Anthropic</strong> — 動画メタデータから短いフック文言を生成、およびアップロード写真の顔の有無の自動チェック（顔の数のみ・個人識別なし）。</li>
     <li><strong>YouTube Data API（Google）</strong> — 入力URLの公開メタデータ取得。</li>
     <li><strong>Vercel</strong> — アプリケーションのホスティング。</li>
   </ul>
@@ -85,7 +97,7 @@
   <p>ログインセッションと言語設定の保持にクッキーを使用します。広告目的では使用しません。</p>
 
   <h2>データの保持と利用者の権利</h2>
-  <p>アカウントが有効な間、データを保持します。アップロード写真や生成画像を含む個人データへのアクセス・訂正・削除は、お問い合わせにより請求できます。</p>
+  <p>アカウントが有効な間、データを保持します。アップロードされた顔写真はより厳格に扱い、保持するのは最新の1枚のみ（新しいアップロードで以前のものは削除）で、アプリ上でいつでも削除できます。写真や生成画像を含む個人データへのアクセス・訂正・削除は、<a href="mailto:support@quickthumb.app">support@quickthumb.app</a> へのご連絡で請求できます。</p>
 
   <h2>お問い合わせ</h2>
   <p><a href="mailto:support@quickthumb.app">support@quickthumb.app</a></p>
