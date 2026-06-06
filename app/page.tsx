@@ -181,6 +181,8 @@ export default function Home() {
             ? t('persona.tooLarge')
             : data.code === 'consent'
             ? t('persona.consentRequired')
+            : data.code === 'rate_limited'
+            ? t('persona.rateLimited')
             : data.error || t('persona.uploadError')
         );
         return;

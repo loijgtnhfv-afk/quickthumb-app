@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { isRateLimited } from '@/lib/rate-limit';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -100,6 +101,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Image too large (max 4MB)', code: 'too_large' }, { status: 400 });
     }
 
+    const admin = createServiceClient();
+    // Abuse brake (no extra infra): cap successful uploads per user/hour, before
+    // the paid vision call + storage write, to bound storage growth / cost.
+    if (
+      await isRateLimited(admin, {
+        table: 'usage_logs',
+        userId: user.id,
+        windowMs: 3_600_000,
+        max: 20,
+        eventType: 'persona_consent',
+      })
+    ) {
+      return NextResponse.json(
+        { error: 'Too many uploads recently. Please try again later.', code: 'rate_limited' },
+        { status: 429 }
+      );
+    }
+
     const buf = Buffer.from(await file.arrayBuffer());
 
     const check = await faceCheck(buf);
@@ -117,7 +136,6 @@ export async function POST(request: NextRequest) {
     const ts = Date.now();
     const path = `${user.id}/persona/${ts}-${randomUUID()}.${ext}`;
 
-    const admin = createServiceClient();
     const { error } = await admin.storage
       .from('thumbnails')
       .upload(path, buf, { contentType: file.type, upsert: true });

@@ -4,6 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { generateNbpThumbnail, NBP_CONCEPTS } from '@/lib/nbp';
 import { extractVideoId, fetchVideoMetadata } from '@/lib/youtube';
+import { isRateLimited } from '@/lib/rate-limit';
 
 // 4 parallel Nano Banana Pro calls normally finish in ~40s. Each call has its
 // own 90s timeout in lib/nbp, so cap the function at 120s — a hung generation
@@ -297,6 +298,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const admin = createServiceClient();
+
+    // Abuse brake (no extra infra): cap generation ATTEMPTS per user/hour, BEFORE
+    // any paid metadata/Haiku/NBP work. The quota alone doesn't cap spend because
+    // a failed generation refunds its slot — so an attacker could force failures
+    // and burn paid NBP work indefinitely; this bounds that.
+    if (
+      await isRateLimited(admin, {
+        table: 'generations',
+        userId: user.id,
+        windowMs: 3_600_000,
+        max: 20,
+      })
+    ) {
+      return NextResponse.json(
+        { error: 'Too many generations recently. Please try again later.', code: 'rate_limited' },
+        { status: 429 }
+      );
+    }
+
     const meta = await fetchVideoMetadata(videoId);
     const { en, hooksNative, hooksEn } = await analyzeForThumbnail(
       meta.title,
@@ -321,8 +342,6 @@ export async function POST(request: NextRequest) {
       return hooksNative[i % Math.max(1, hooksNative.length)] || fbNative;
     };
     const prompts = NBP_CONCEPTS.map((c, i) => c.build(hookFor(c, i), topic, hasFace));
-
-    const admin = createServiceClient();
 
     // Atomically charge the quota slot now, immediately before the paid NBP work
     // (after the cheap metadata/Haiku calls so an invalid URL never costs a slot).
