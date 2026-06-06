@@ -189,7 +189,7 @@ Most of what's left is FOUNDER-blocked (needs accounts / DB / DNS / a real prod 
 1. **Prod e2e test of v2** — sign in, upload your own face, paste your own video URL → expect 4 finished thumbs (face + hook). Watch the maxDuration=120 vs 4-parallel-NBP timeout (each NBP call now aborts at 90s in `lib/nbp.ts`); if it still times out, drop `NBP_CONCEPTS` to 3 or move to Vercel Pro.
 2. **Confirm the free tier + run the SQL** — recommended `generations_limit` default = 1 (1 gen × 4 img); see PHASE2.md §0.
 3. **Custom domain** — ✅ DONE (2026-06-06): `quickthumb.app` apex is live, `metadataBase`/OG reverted to it, `app/sitemap.ts` + `app/robots.ts` added. Founder follow-up: add `https://quickthumb.app` (and `https://www.quickthumb.app`) to Supabase Auth → URL Configuration → Redirect URLs so auth-email links resolve on the brand domain.
-4. **Activate Stripe** (code is shipped + dormant) — PHASE2.md §2 checklist; test in Stripe TEST mode first.
+4. **Activate Stripe** (code is shipped + dormant) — PHASE2.md §2 checklist; test in Stripe TEST mode first. **Legal prerequisite (founder, HIGH):** before charging, terms/privacy need a legal/trading entity name, governing law + jurisdiction, refund/cancellation policy, and a Japanese 特定商取引法に基づく表記 page — none exist yet (business/legal decision, can't be auto-written).
 5. **YouTube OAuth ownership** (longest lead, optional) — PHASE2.md §3.
 6. **Launch** — soft test with ~5-10 small YouTubers first, then X / Reddit / Indie Hackers.
 
