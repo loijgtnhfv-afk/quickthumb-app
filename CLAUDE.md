@@ -4,7 +4,7 @@ AI-powered YouTube thumbnail generator SaaS. Upload your own face + paste a YouT
 
 ## Status
 
-- **Live**: https://quickthumb-app.vercel.app/ (custom domain quickthumb.app NOT wired up yet — apex + app. subdomain both fail to resolve as of 2026-06-03; `metadataBase` points at the Vercel origin until DNS is configured in Vercel)
+- **Live**: https://quickthumb.app/ (custom domain went live 2026-06-06 — apex serves production, www 307-redirects to apex; `metadataBase`/OG point at the brand apex. https://quickthumb-app.vercel.app/ still works as the Vercel origin backup. Note: the `app.` subdomain does NOT resolve, but it's unused.)
 - **GitHub**: github.com/loijgtnhfv-afk/quickthumb-app
 - **Vercel**: sano-s-projects1/quickthumb-app
 - **Stage**: Appeal pivot v2 LIVE (2026-06-03) — engine is Nano Banana Pro generating FINISHED thumbnails; the face comes from the user's OWN uploaded photo. Pre-launch (no Stripe yet). Free tier: 1 generation × 4 images (decided 2026-06-06; set `generations_limit` default to 1).
@@ -188,7 +188,7 @@ Most of what's left is FOUNDER-blocked (needs accounts / DB / DNS / a real prod 
 
 1. **Prod e2e test of v2** — sign in, upload your own face, paste your own video URL → expect 4 finished thumbs (face + hook). Watch the maxDuration=120 vs 4-parallel-NBP timeout (each NBP call now aborts at 90s in `lib/nbp.ts`); if it still times out, drop `NBP_CONCEPTS` to 3 or move to Vercel Pro.
 2. **Confirm the free tier + run the SQL** — recommended `generations_limit` default = 1 (1 gen × 4 img); see PHASE2.md §0.
-3. **Custom domain** — `quickthumb.app` apex + `app.` subdomain don't resolve; wire DNS in Vercel, then revert `metadataBase` in `app/layout.tsx` to `https://quickthumb.app`.
+3. **Custom domain** — ✅ DONE (2026-06-06): `quickthumb.app` apex is live, `metadataBase`/OG reverted to it, `app/sitemap.ts` + `app/robots.ts` added. Founder follow-up: add `https://quickthumb.app` (and `https://www.quickthumb.app`) to Supabase Auth → URL Configuration → Redirect URLs so auth-email links resolve on the brand domain.
 4. **Activate Stripe** (code is shipped + dormant) — PHASE2.md §2 checklist; test in Stripe TEST mode first.
 5. **YouTube OAuth ownership** (longest lead, optional) — PHASE2.md §3.
 6. **Launch** — soft test with ~5-10 small YouTubers first, then X / Reddit / Indie Hackers.
