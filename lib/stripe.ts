@@ -16,8 +16,12 @@ export const STRIPE_PRICE_ID = process.env.NEXT_PUBLIC_STRIPE_PRICE_ID || '';
 // recommends 20 on standard NBP pricing (~40% gross margin); override via env.
 export const PRO_GENERATIONS_LIMIT = Number(process.env.STRIPE_PRO_GENERATIONS_LIMIT) || 20;
 
-// Limit restored on downgrade (matches the app's free-tier default).
-export const FREE_GENERATIONS_LIMIT = Number(process.env.FREE_GENERATIONS_LIMIT) || 2;
+// Limit restored on downgrade — MUST match the app's free-tier default, which
+// was DECIDED 2026-06-06 = 1 generation (x4 images). Keep this in sync with the
+// `profiles.generations_limit` column default; if they disagree, a Stripe
+// free-downgrade event would silently reset users to the wrong number. Override
+// via env if the free tier ever changes.
+export const FREE_GENERATIONS_LIMIT = Number(process.env.FREE_GENERATIONS_LIMIT) || 1;
 
 // True only when both the secret key and a price id are present.
 export function billingConfigured(): boolean {
