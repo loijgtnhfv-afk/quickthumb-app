@@ -4,7 +4,7 @@ import sharp from 'sharp';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { isRateLimited } from '@/lib/rate-limit';
-import { PERSONA_BUCKET, ensurePersonaBucket } from '@/lib/personas';
+import { PERSONA_BUCKET, ensurePersonaBucket, isValidPersonaPath } from '@/lib/personas';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -209,5 +209,38 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     console.error('upload-persona error', err);
     return NextResponse.json({ error: 'Upload failed. Please try again.' }, { status: 500 });
+  }
+}
+
+// Delete the user's own persona photo (the "Remove" button). Validates the path
+// is inside THIS user's namespace before removing, so a caller can never delete
+// another user's or an arbitrary object. Makes the privacy-policy "remove at any
+// time" promise actually true (previously Remove only cleared client state).
+export async function DELETE(request: NextRequest) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const path = typeof body.path === 'string' ? body.path.trim() : '';
+    if (!path || !isValidPersonaPath(path, user.id)) {
+      return NextResponse.json({ error: 'Invalid persona image' }, { status: 400 });
+    }
+
+    const admin = createServiceClient();
+    const { error } = await admin.storage.from(PERSONA_BUCKET).remove([path]);
+    if (error) {
+      console.error('persona delete storage error:', error);
+      return NextResponse.json({ error: 'Could not remove the photo. Please try again.' }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error('persona delete error', err);
+    return NextResponse.json({ error: 'Could not remove the photo. Please try again.' }, { status: 500 });
   }
 }

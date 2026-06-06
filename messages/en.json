@@ -23,6 +23,11 @@
     "errorOverLimit": "You’ve used all {limit} free generations. Upgrade to Pro for more.",
     "errorNetwork": "Network error. Please try again.",
     "errorBusy": "Too many requests at once. Please wait a moment and try again.",
+    "errorVideoNotFound": "We couldn’t find that video — it may be private or deleted.",
+    "errorGenerationFailed": "Generation failed. Please try again.",
+    "errorPersonaLoad": "We couldn’t load your uploaded photo. Please re-upload and try again.",
+    "errorPersonaInvalid": "There’s a problem with the uploaded photo. Please re-upload it.",
+    "errorServer": "Something went wrong. Please try again.",
     "urlHint": "Works with youtube.com/watch, youtu.be, and Shorts links."
   },
   "persona": {

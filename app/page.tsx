@@ -23,9 +23,11 @@ interface Profile {
 
 function isValidYouTubeUrl(url: string): boolean {
   const patterns = [
-    /^(https?:\/\/)?(www\.)?youtube\.com\/watch\?v=[\w-]{11}/,
+    // Allow the m. mobile host too — it's what the YouTube app's share sheet
+    // emits, and the server (extractVideoId) already accepts it.
+    /^(https?:\/\/)?((www|m)\.)?youtube\.com\/watch\?v=[\w-]{11}/,
     /^(https?:\/\/)?(www\.)?youtu\.be\/[\w-]{11}/,
-    /^(https?:\/\/)?(www\.)?youtube\.com\/shorts\/[\w-]{11}/,
+    /^(https?:\/\/)?((www|m)\.)?youtube\.com\/shorts\/[\w-]{11}/,
   ];
   return patterns.some((p) => p.test(url.trim()));
 }
@@ -201,6 +203,26 @@ export default function Home() {
     }
   };
 
+  // "Remove" the uploaded face. Clear the UI immediately, then delete the stored
+  // object best-effort so the photo doesn't linger in storage (and so the
+  // privacy-policy "remove at any time" promise is real).
+  const handleRemovePersona = async () => {
+    const path = personaPath;
+    setPersonaUrl(null);
+    setPersonaPath(null);
+    setPersonaError('');
+    if (!path) return;
+    try {
+      await fetch('/api/upload-persona', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path }),
+      });
+    } catch {
+      // Best-effort: a later upload also deletes older personas server-side.
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -237,7 +259,19 @@ export default function Home() {
         } else if (res.status === 429) {
           setError(t('form.errorBusy'));
         } else {
-          setError(data.error || t('form.errorNetwork'));
+          // The API returns a stable `code` on every error; map it to a localized
+          // string so JA users never see a raw English server message.
+          const codeMap: Record<string, string> = {
+            video_not_found: 'form.errorVideoNotFound',
+            gen_failed: 'form.errorGenerationFailed',
+            persona_load: 'form.errorPersonaLoad',
+            persona_invalid: 'form.errorPersonaInvalid',
+            invalid_url: 'form.errorInvalid',
+            empty: 'form.errorEmpty',
+            server: 'form.errorServer',
+          };
+          const key = data.code ? codeMap[data.code] : undefined;
+          setError(key ? t(key) : t('form.errorServer'));
         }
         setStatus('error');
         return;
@@ -569,10 +603,7 @@ export default function Home() {
               {personaUrl && !personaUploading && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setPersonaUrl(null);
-                    setPersonaPath(null);
-                  }}
+                  onClick={handleRemovePersona}
                   style={{
                     padding: '8px 12px',
                     fontSize: 13,

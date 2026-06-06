@@ -17,7 +17,15 @@ function AuthForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
+  // A failed confirmation-link exchange redirects here with ?error=callback_failed
+  // (see app/auth/callback/route.ts). Surface it instead of landing on a silent
+  // sign-in page. Lazy initializer so we read the param once, without a render effect.
+  const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(
+    () =>
+      searchParams.get('error') === 'callback_failed'
+        ? { type: 'error', text: t('auth.somethingWrong') }
+        : null
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

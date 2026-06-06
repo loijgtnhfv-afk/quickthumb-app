@@ -229,7 +229,7 @@ export async function POST(request: NextRequest) {
       typeof body.custom_text === 'string' ? body.custom_text.trim() : '';
     const customText = customTextRaw.slice(0, 60);
     if (!youtubeUrl) {
-      return NextResponse.json({ error: 'youtube_url is required' }, { status: 400 });
+      return NextResponse.json({ error: 'youtube_url is required', code: 'empty' }, { status: 400 });
     }
 
     // SECURITY / CONSENT: only accept a persona PATH inside THIS user's own
@@ -240,12 +240,12 @@ export async function POST(request: NextRequest) {
     // namespace) BEFORE we sign a URL for it. We never accept a client URL, so
     // there is no URL to be tricked by; we re-sign server-side from the path.
     if (personaPath && !isValidPersonaPath(personaPath, user.id)) {
-      return NextResponse.json({ error: 'Invalid persona image' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid persona image', code: 'persona_invalid' }, { status: 400 });
     }
 
     const videoId = extractVideoId(youtubeUrl);
     if (!videoId) {
-      return NextResponse.json({ error: 'Invalid YouTube URL' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid YouTube URL', code: 'invalid_url' }, { status: 400 });
     }
 
     const { data: profile, error: profileError } = await supabase
@@ -254,7 +254,7 @@ export async function POST(request: NextRequest) {
       .eq('id', user.id)
       .single();
     if (profileError || !profile) {
-      return NextResponse.json({ error: 'Profile not found' }, { status: 500 });
+      return NextResponse.json({ error: 'Profile not found', code: 'server' }, { status: 500 });
     }
     if (profile.generations_used >= profile.generations_limit) {
       return NextResponse.json(
@@ -311,7 +311,7 @@ export async function POST(request: NextRequest) {
       if (signErr || !signed?.signedUrl) {
         console.error('persona sign failed:', signErr);
         return NextResponse.json(
-          { error: 'Could not load your uploaded photo. Please re-upload and try again.' },
+          { error: 'Could not load your uploaded photo. Please re-upload and try again.', code: 'persona_load' },
           { status: 400 }
         );
       }
@@ -345,7 +345,7 @@ export async function POST(request: NextRequest) {
           { status: 429 }
         );
       }
-      return NextResponse.json({ error: 'Could not start generation' }, { status: 500 });
+      return NextResponse.json({ error: 'Could not start generation', code: 'server' }, { status: 500 });
     }
     const generationsUsedAfter = reservation.usedBefore + 1;
 
@@ -365,7 +365,7 @@ export async function POST(request: NextRequest) {
       .single();
     if (insertError || !insertRow) {
       await refundGenerationSlot(admin, user.id); // nothing generated yet
-      return NextResponse.json({ error: 'Failed to record generation' }, { status: 500 });
+      return NextResponse.json({ error: 'Failed to record generation', code: 'server' }, { status: 500 });
     }
     const generationId = insertRow.id as string;
 
@@ -401,7 +401,7 @@ export async function POST(request: NextRequest) {
       // doesn't cost the user a generation.
       await refundGenerationSlot(admin, user.id);
       console.error('generate: all concepts failed', genError);
-      return NextResponse.json({ error: 'Generation failed, please try again.' }, { status: 500 });
+      return NextResponse.json({ error: 'Generation failed, please try again.', code: 'gen_failed' }, { status: 500 });
     }
 
     // Quota was already charged at reservation time, so no increment here.
@@ -444,8 +444,8 @@ export async function POST(request: NextRequest) {
     // everything else stays generic so internal/upstream detail never leaks.
     const m = err instanceof Error ? err.message : '';
     if (m === 'Video not found or private') {
-      return NextResponse.json({ error: m }, { status: 404 });
+      return NextResponse.json({ error: m, code: 'video_not_found' }, { status: 404 });
     }
-    return NextResponse.json({ error: 'Something went wrong, please try again.' }, { status: 500 });
+    return NextResponse.json({ error: 'Something went wrong, please try again.', code: 'server' }, { status: 500 });
   }
 }

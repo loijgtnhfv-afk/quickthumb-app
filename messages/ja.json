@@ -23,6 +23,11 @@
     "errorOverLimit": "無料枠の{limit}回を使い切りました。Proにアップグレードで上限アップ。",
     "errorNetwork": "通信エラーが発生しました。もう一度お試しください。",
     "errorBusy": "リクエストが集中しています。少し待ってからもう一度お試しください。",
+    "errorVideoNotFound": "その動画が見つかりませんでした（非公開または削除された可能性があります）。",
+    "errorGenerationFailed": "生成に失敗しました。もう一度お試しください。",
+    "errorPersonaLoad": "アップロードした写真を読み込めませんでした。もう一度アップロードしてお試しください。",
+    "errorPersonaInvalid": "アップロードした写真に問題があります。もう一度アップロードしてください。",
+    "errorServer": "問題が発生しました。もう一度お試しください。",
     "urlHint": "youtube.com/watch、youtu.be、Shortsリンクに対応しています。"
   },
   "persona": {
