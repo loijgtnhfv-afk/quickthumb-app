@@ -798,6 +798,12 @@ export default function Home() {
           {t('footer.copyright')} ·{' '}
           <a href="/terms.html" style={{ color: 'inherit' }}>{t('footer.terms')}</a> ·{' '}
           <a href="/privacy.html" style={{ color: 'inherit' }}>{t('footer.privacy')}</a>
+          {billingOn && (
+            <>
+              {' · '}
+              <a href="/tokushoho.html" style={{ color: 'inherit' }}>{t('footer.tokushoho')}</a>
+            </>
+          )}
         </footer>
       </div>
 
