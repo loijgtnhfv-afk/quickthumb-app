@@ -5,6 +5,17 @@ import { stripe, PRO_GENERATIONS_LIMIT, FREE_GENERATIONS_LIMIT } from '@/lib/str
 
 export const runtime = 'nodejs';
 
+// Basil moved current_period_end onto the subscription ITEM; read it there with a
+// fallback to the legacy top-level field for older API versions.
+function periodEndUnixOf(sub: Stripe.Subscription): number | undefined {
+  const item = sub.items?.data?.[0] as unknown as { current_period_end?: number } | undefined;
+  return item?.current_period_end ?? (sub as unknown as { current_period_end?: number }).current_period_end;
+}
+function periodEndIsoOf(sub: Stripe.Subscription): string | null {
+  const unix = periodEndUnixOf(sub);
+  return unix ? new Date(unix * 1000).toISOString() : null;
+}
+
 // Stripe billing webhook. Verifies the raw body against the signing secret, then
 // flips profiles.plan / generations_limit on the three lifecycle events. Writes
 // go through the service-role client (RLS protects billing fields from the anon
@@ -43,6 +54,20 @@ export async function POST(request: NextRequest) {
         const customerId = customerIdOf(s.customer);
         const subscriptionId = typeof s.subscription === 'string' ? s.subscription : s.subscription?.id;
         if (userId) {
+          // Anchor current_period_end at fulfillment so the renewal-reset
+          // comparison has a real baseline from day one. Without it the column
+          // stays NULL until the first subscription.updated, and a benign
+          // mid-cycle update would read prevEnd=0, treat it as a renewal, and
+          // wrongly refill the quota.
+          let periodEndIso: string | null = null;
+          if (subscriptionId) {
+            try {
+              const sub = await stripe.subscriptions.retrieve(subscriptionId);
+              periodEndIso = periodEndIsoOf(sub);
+            } catch (e) {
+              console.warn('subscription retrieve for period end failed:', e instanceof Error ? e.message : e);
+            }
+          }
           await admin
             .from('profiles')
             .update({
@@ -52,6 +77,7 @@ export async function POST(request: NextRequest) {
               subscription_status: 'active',
               generations_limit: PRO_GENERATIONS_LIMIT,
               generations_used: 0,
+              ...(periodEndIso ? { current_period_end: periodEndIso } : {}),
             })
             .eq('id', userId);
         }
@@ -61,14 +87,16 @@ export async function POST(request: NextRequest) {
         const sub = event.data.object as Stripe.Subscription;
         const customerId = customerIdOf(sub.customer);
         if (!customerId) break;
-        const active = sub.status === 'active' || sub.status === 'trialing';
-        // Basil moved current_period_end onto the subscription ITEM; fall back to
-        // the legacy top-level field for older API versions.
-        const item = sub.items?.data?.[0] as unknown as { current_period_end?: number } | undefined;
-        const periodEndUnix =
-          item?.current_period_end ??
-          (sub as unknown as { current_period_end?: number }).current_period_end;
-        const periodEndIso = periodEndUnix ? new Date(periodEndUnix * 1000).toISOString() : null;
+        const status = sub.status;
+        // Keep serving Pro through Stripe's dunning grace (past_due/unpaid) — a
+        // transient card decline shouldn't instantly strip a paying user to the
+        // free limit while Stripe is still retrying. Only a real cancel
+        // (subscription.deleted) or a terminal status falls to free.
+        const inGrace =
+          status === 'active' || status === 'trialing' || status === 'past_due' || status === 'unpaid';
+        const trulyActive = status === 'active' || status === 'trialing';
+        const periodEndUnix = periodEndUnixOf(sub);
+        const periodEndIso = periodEndIsoOf(sub);
 
         // Detect a renewal (period advanced past what we stored) -> reset usage.
         const { data: prof } = await admin
@@ -80,13 +108,18 @@ export async function POST(request: NextRequest) {
         const renewed = periodEndUnix ? periodEndUnix * 1000 > prevEndMs : false;
 
         const update: Record<string, unknown> = {
-          subscription_status: sub.status,
+          subscription_status: status,
           stripe_subscription_id: sub.id,
-          plan: active ? 'pro' : 'free',
-          generations_limit: active ? PRO_GENERATIONS_LIMIT : FREE_GENERATIONS_LIMIT,
-          current_period_end: periodEndIso,
+          plan: inGrace ? 'pro' : 'free',
+          generations_limit: inGrace ? PRO_GENERATIONS_LIMIT : FREE_GENERATIONS_LIMIT,
         };
-        if (renewed && active) update.generations_used = 0;
+        // Advance the stored period end only on a confirmed-active event and
+        // never backward (reordered deliveries), so the renewal comparison stays
+        // sound and a dunning event doesn't move the baseline.
+        if (trulyActive && periodEndUnix && periodEndUnix * 1000 >= prevEndMs) {
+          update.current_period_end = periodEndIso;
+        }
+        if (renewed && trulyActive) update.generations_used = 0;
         await admin.from('profiles').update(update).eq('stripe_customer_id', customerId);
         break;
       }
