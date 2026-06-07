@@ -32,6 +32,49 @@ function isValidYouTubeUrl(url: string): boolean {
   return patterns.some((p) => p.test(url.trim()));
 }
 
+// Cap the uploaded image so large phone photos (often 6–12MB, and frequently
+// rotated via EXIF) don't hit Vercel's ~4.5MB request limit or feed Nano Banana
+// Pro a sideways face. We normalize on the client; the server still guards size.
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+const MAX_IMAGE_EDGE = 1600;
+
+// Downscale + bake in EXIF orientation + strip metadata (incl. GPS) by drawing
+// through a canvas, then re-encode as JPEG. Falls back to the original file if
+// the browser can't decode it (e.g. an exotic format) so the server-side
+// type/size checks remain the backstop.
+async function prepareImageForUpload(file: File): Promise<File> {
+  if (!file.type.startsWith('image/')) return file;
+  try {
+    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    const scale = Math.min(1, MAX_IMAGE_EDGE / Math.max(bitmap.width, bitmap.height));
+    const w = Math.max(1, Math.round(bitmap.width * scale));
+    const h = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      bitmap.close?.();
+      return file;
+    }
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close?.();
+    const toBlob = (q: number) =>
+      new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', q));
+    // Step quality down until it fits; faces survive q0.55 fine at this size.
+    let blob: Blob | null = null;
+    for (const q of [0.85, 0.7, 0.55]) {
+      blob = await toBlob(q);
+      if (blob && blob.size <= MAX_UPLOAD_BYTES) break;
+    }
+    if (!blob) return file;
+    const base = file.name.replace(/\.[^.]+$/, '') || 'photo';
+    return new File([blob], `${base}.jpg`, { type: 'image/jpeg' });
+  } catch {
+    return file;
+  }
+}
+
 // Tiny header toggle to switch between EN and JA. Persists via cookie so the
 // next request hits next-intl's request config with the correct locale.
 function LangSwitcher({ current }: { current: string }) {
@@ -173,8 +216,15 @@ export default function Home() {
     setPersonaError('');
     setPersonaUploading(true);
     try {
+      const prepared = await prepareImageForUpload(file);
+      // Even after downscaling, a pathological image could exceed the limit —
+      // reject client-side with a clear message instead of a Vercel 413.
+      if (prepared.size > MAX_UPLOAD_BYTES) {
+        setPersonaError(t('persona.tooLarge'));
+        return;
+      }
       const fd = new FormData();
-      fd.append('file', file);
+      fd.append('file', prepared);
       fd.append('consent', 'true');
       const res = await fetch('/api/upload-persona', { method: 'POST', body: fd });
       const data = await res.json();
