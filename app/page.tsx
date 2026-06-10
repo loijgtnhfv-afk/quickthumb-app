@@ -183,6 +183,39 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Returning from Stripe Checkout (success_url = /?upgraded=1): the
+  // subscription.completed webhook can land a beat AFTER the browser redirect,
+  // so the first profile read may still show the old free plan. Re-fetch a few
+  // times until Pro appears, then strip the param so a later refresh doesn't
+  // re-trigger the poll.
+  useEffect(() => {
+    if (!user || typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('upgraded') !== '1') return;
+    let cancelled = false;
+    (async () => {
+      for (let i = 0; i < 5 && !cancelled; i++) {
+        const { data: p } = await supabase
+          .from('profiles')
+          .select('plan, generations_used, generations_limit')
+          .eq('id', user.id)
+          .single();
+        if (cancelled) return;
+        if (p) setProfile(p as Profile);
+        if ((p as Profile | null)?.plan === 'pro') break;
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+      if (cancelled) return;
+      params.delete('upgraded');
+      const qs = params.toString();
+      window.history.replaceState(null, '', window.location.pathname + (qs ? `?${qs}` : ''));
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     setUser(null);
