@@ -23,7 +23,14 @@ export const PRO_GENERATIONS_LIMIT = Number(process.env.STRIPE_PRO_GENERATIONS_L
 // via env if the free tier ever changes.
 export const FREE_GENERATIONS_LIMIT = Number(process.env.FREE_GENERATIONS_LIMIT) || 1;
 
-// True only when both the secret key and a price id are present.
+// Gate for STARTING a checkout. Requires the secret key, a price id, AND the
+// webhook signing secret — because fulfillment (plan upgrade, quota grant)
+// happens ONLY in the webhook. If we let a user pay while STRIPE_WEBHOOK_SECRET
+// is missing/unset, the webhook no-ops and they'd be charged but never upgraded
+// (money taken, nothing delivered). Coupling them here makes that state
+// impossible: no webhook secret -> checkout 503s instead of charging. (A wrong
+// secret still fails signature verification in the webhook; only the runbook's
+// post-switch smoke test catches that — see PHASE2.md §2.)
 export function billingConfigured(): boolean {
-  return !!stripe && !!STRIPE_PRICE_ID;
+  return !!stripe && !!STRIPE_PRICE_ID && !!process.env.STRIPE_WEBHOOK_SECRET;
 }

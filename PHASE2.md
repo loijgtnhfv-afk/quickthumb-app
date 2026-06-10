@@ -63,6 +63,20 @@ The integration is in the repo and INERT until env vars are set: `lib/stripe.ts`
 6. Test (TEST mode): `stripe listen --forward-to localhost:3000/api/stripe/webhook` + a real checkout with card `4242 4242 4242 4242`; confirm the profile flips to `pro` + limit, and cancel via the portal downgrades it.
 7. Repeat Product/Price/Portal/Webhook in LIVE mode; swap to `sk_live_…` + live price id + live webhook secret.
 
+> **STATUS 2026-06-11:** TEST mode is FULLY VERIFIED e2e on prod — upgrade (pay → pro, 20/20) AND immediate-cancel downgrade (→ free, 1/1) both confirmed. Steps 1–6 done in TEST. Remaining = LIVE switch-over (step 7) + filling the legal placeholders (§ below / project memory). Pricing DECIDED (FREE = 1 gen × 4 img, PRO = 20 @ $18/mo). The `generations_limit` column default = 1; SQL done.
+
+### ⚠️ LIVE-SWITCHOVER LANDMINES (from the 2026-06-11 pre-LIVE money-path audit — read before flipping live keys)
+
+These are config mistakes, not code bugs. They are how you accidentally charge real money and deliver nothing, or kill the paid flow:
+
+1. **`STRIPE_WEBHOOK_SECRET` wrong/missing → user is charged but never upgraded** (the webhook is the ONLY fulfillment path; with a bad secret it no-ops). Mitigation now in code: `billingConfigured()` requires the webhook secret to be PRESENT, so a *missing* one makes `/api/checkout` 503 instead of charging. A *wrong* value still passes presence but fails signature → only the post-switch smoke test (step below) catches it. So: after setting LIVE keys, ALWAYS do one real-card checkout and confirm the profile flips to `pro` BEFORE announcing.
+2. **`NEXT_PUBLIC_STRIPE_PRICE_ID` marked "Sensitive" in Vercel → the upgrade button never appears / billing looks dead.** Vercel does NOT inline a Sensitive var into the client bundle (this is the exact class of bug that took down prod login on 2026-06-09 with the Supabase publishable key). **Rule: no `NEXT_PUBLIC_*` var may EVER be Sensitive.** The Stripe price id is public-safe. Verify after deploy by grepping the prod JS chunks for `price_`.
+3. **Wrong-mode / deleted price id passes `billingConfigured()` then 500s inside Stripe.** The gate only checks the id is non-empty, not that it's a valid LIVE price. Use the LIVE-mode `price_…` (created in LIVE, not TEST) and confirm checkout opens with the right amount in the smoke test.
+4. **Env vars only take effect after a REDEPLOY.** `NEXT_PUBLIC_*` is build-time-inlined → set all LIVE vars, then redeploy ONCE.
+5. **LIVE Customer Portal must be enabled separately** (Stripe configures test + live portals independently) or `/api/portal` 500s for paying users.
+
+**LIVE smoke test (do every time after switching keys):** real card → expect `plan=pro` + `generations_limit=20` + `generations_used=0` + header shows "Manage plan"; then immediate-cancel in the Stripe dashboard → expect `plan=free` + `generations_limit=1` + header shows "Upgrade"; then REFUND the test charge.
+
 Implementation notes (what the shipped code does):
 
 - `lib/stripe.ts` lets the SDK default to the account's Basil API (no pinned apiVersion). Env: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (different for CLI vs deployed), `NEXT_PUBLIC_STRIPE_PRICE_ID`.
@@ -71,7 +85,7 @@ Implementation notes (what the shipped code does):
 - `app/api/stripe/webhook/route.ts` (`runtime = 'nodejs'`): read raw body with `await req.text()` (never JSON.parse first), verify with `stripe.webhooks.constructEventAsync`. Handle:
   - `checkout.session.completed` → plan='pro', set `generations_limit`, reset `generations_used`, store stripe ids.
   - `customer.subscription.updated` → map status; **`current_period_end` is now `subscription.items.data[0].current_period_end`** (Basil moved it off the Subscription — the old top-level field is `undefined`).
-  - `customer.subscription.deleted` → plan='free', limit=2.
+  - `customer.subscription.deleted` → plan='free', `generations_limit = FREE_GENERATIONS_LIMIT` (=1).
   - Writes via `createServiceClient`; idempotent (SET target state, don't increment).
 - `app/api/portal/route.ts`: `stripe.billingPortal.sessions.create`. Configure the portal in Dashboard (test AND live).
 - Monthly reset: on-read in `/api/generate` (reset `generations_used` when `now >= current_period_end`) + optional daily Vercel Cron backstop (Hobby = once/day max).
