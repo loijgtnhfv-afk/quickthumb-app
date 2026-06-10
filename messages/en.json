@@ -59,6 +59,14 @@
     "upgrade": "Upgrade to Pro",
     "manage": "Manage plan"
   },
+  "billing": {
+    "errorUnconfigured": "Billing isn’t available yet.",
+    "errorUnauthorized": "Please sign in first.",
+    "errorAlreadySubscribed": "You already have an active subscription. Use “Manage plan” to make changes.",
+    "errorNoSubscription": "No subscription found.",
+    "errorCheckout": "Couldn’t start checkout. Please try again.",
+    "errorPortal": "Couldn’t open the billing portal. Please try again."
+  },
   "footer": {
     "copyright": "© 2026 Quickthumb",
     "tokushoho": "Commercial Disclosure",

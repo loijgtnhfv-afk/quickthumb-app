@@ -59,6 +59,14 @@
     "upgrade": "Proにアップグレード",
     "manage": "プラン管理"
   },
+  "billing": {
+    "errorUnconfigured": "課金はまだ利用できません。",
+    "errorUnauthorized": "先にログインしてください。",
+    "errorAlreadySubscribed": "すでに有効なサブスクリプションがあります。変更は「プラン管理」から行ってください。",
+    "errorNoSubscription": "サブスクリプションが見つかりませんでした。",
+    "errorCheckout": "決済を開始できませんでした。もう一度お試しください。",
+    "errorPortal": "請求ポータルを開けませんでした。もう一度お試しください。"
+  },
   "footer": {
     "copyright": "© 2026 Quickthumb",
     "tokushoho": "特定商取引法に基づく表記",

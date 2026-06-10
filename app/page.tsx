@@ -231,8 +231,22 @@ export default function Home() {
     try {
       const res = await fetch(endpoint, { method: 'POST' });
       const data = await res.json();
-      if (res.ok && data.url) window.location.href = data.url;
-      else setError(data.error || t('form.errorNetwork'));
+      if (res.ok && data.url) {
+        window.location.href = data.url;
+        return;
+      }
+      // Map the server error code to a localized string so JA users don't see the
+      // raw English fallback. Falls back to the network error if the code is unknown.
+      const billingCodeMap: Record<string, string> = {
+        billing_unconfigured: 'billing.errorUnconfigured',
+        unauthorized: 'billing.errorUnauthorized',
+        already_subscribed: 'billing.errorAlreadySubscribed',
+        no_subscription: 'billing.errorNoSubscription',
+        checkout_failed: 'billing.errorCheckout',
+        portal_failed: 'billing.errorPortal',
+      };
+      const key = data.code ? billingCodeMap[data.code] : undefined;
+      setError(key ? t(key) : t('form.errorNetwork'));
     } catch {
       setError(t('form.errorNetwork'));
     }

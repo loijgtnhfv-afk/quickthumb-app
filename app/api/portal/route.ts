@@ -10,13 +10,17 @@ export const runtime = 'nodejs';
 export async function POST(request: NextRequest) {
   try {
     if (!stripe) {
-      return NextResponse.json({ error: 'Billing is not configured yet.' }, { status: 503 });
+      return NextResponse.json(
+        { error: 'Billing is not configured yet.', code: 'billing_unconfigured' },
+        { status: 503 }
+      );
     }
     const supabase = await createClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!user)
+      return NextResponse.json({ error: 'Unauthorized', code: 'unauthorized' }, { status: 401 });
 
     const admin = createServiceClient();
     const { data: profile } = await admin
@@ -26,7 +30,10 @@ export async function POST(request: NextRequest) {
       .single();
     const customerId = profile?.stripe_customer_id as string | null;
     if (!customerId) {
-      return NextResponse.json({ error: 'No subscription found.' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'No subscription found.', code: 'no_subscription' },
+        { status: 400 }
+      );
     }
 
     const origin = request.headers.get('origin') || new URL(request.url).origin;
@@ -39,7 +46,7 @@ export async function POST(request: NextRequest) {
     // Log server-side only; never surface raw Stripe/internal detail to the client.
     console.error('portal error', err);
     return NextResponse.json(
-      { error: 'Could not open the billing portal. Please try again.' },
+      { error: 'Could not open the billing portal. Please try again.', code: 'portal_failed' },
       { status: 500 }
     );
   }

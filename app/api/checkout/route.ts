@@ -9,13 +9,17 @@ export const runtime = 'nodejs';
 export async function POST(request: NextRequest) {
   try {
     if (!billingConfigured() || !stripe) {
-      return NextResponse.json({ error: 'Billing is not configured yet.' }, { status: 503 });
+      return NextResponse.json(
+        { error: 'Billing is not configured yet.', code: 'billing_unconfigured' },
+        { status: 503 }
+      );
     }
     const supabase = await createClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!user)
+      return NextResponse.json({ error: 'Unauthorized', code: 'unauthorized' }, { status: 401 });
 
     const admin = createServiceClient();
     const { data: profile } = await admin
@@ -70,7 +74,7 @@ export async function POST(request: NextRequest) {
     // client (it can carry account/config detail).
     console.error('checkout error', err);
     return NextResponse.json(
-      { error: 'Could not start checkout. Please try again.' },
+      { error: 'Could not start checkout. Please try again.', code: 'checkout_failed' },
       { status: 500 }
     );
   }
