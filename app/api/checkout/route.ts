@@ -20,9 +20,28 @@ export async function POST(request: NextRequest) {
     const admin = createServiceClient();
     const { data: profile } = await admin
       .from('profiles')
-      .select('stripe_customer_id')
+      .select('stripe_customer_id, stripe_subscription_id, subscription_status')
       .eq('id', user.id)
       .single();
+
+    // Guard against double-billing. The UI shows "Manage plan" (not "Upgrade")
+    // once a user is Pro, but /api/checkout is directly callable, so an
+    // already-subscribed user (or a buggy/duplicate client request) could open a
+    // SECOND Checkout and end up with two parallel subscriptions on the same
+    // customer — two real charges. If a live subscription already exists, refuse
+    // and steer them to the billing portal instead.
+    const LIVE_SUB_STATUSES = ['active', 'trialing', 'past_due', 'unpaid'];
+    const status = profile?.subscription_status;
+    if (
+      profile?.stripe_subscription_id &&
+      typeof status === 'string' &&
+      LIVE_SUB_STATUSES.includes(status)
+    ) {
+      return NextResponse.json(
+        { error: 'You already have an active subscription.', code: 'already_subscribed' },
+        { status: 409 }
+      );
+    }
 
     let customerId = (profile?.stripe_customer_id as string | null) || undefined;
     if (!customerId) {
