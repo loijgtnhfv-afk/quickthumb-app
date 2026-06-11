@@ -66,6 +66,9 @@
     "placeholder": "例: 月収100万になった理由"
   },
   "results": {
+    "enlarge": "拡大表示",
+    "preview": "サムネのプレビュー",
+    "closePreview": "プレビューを閉じる",
     "heading": "サムネ{count}枚できあがり",
     "regenerate": "もう一度生成",
     "download": "ダウンロード"

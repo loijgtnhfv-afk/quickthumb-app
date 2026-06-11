@@ -158,6 +158,9 @@ export default function Home() {
   // (right-of-publicity). Gates the file input; also sent to / enforced by the API.
   const [personaConsent, setPersonaConsent] = useState(false);
   const [customText, setCustomText] = useState('');
+  // A result thumbnail opened full-size in the lightbox (null = closed). Lets a
+  // user judge text legibility at real size before downloading.
+  const [lightbox, setLightbox] = useState<string | null>(null);
   // Elapsed seconds while a generation is in flight — drives the staged progress
   // copy + bar below so the ~40-60s wait reads as "working", not "frozen".
   const [loadingElapsed, setLoadingElapsed] = useState(0);
@@ -170,6 +173,21 @@ export default function Home() {
       resultsAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }, [status]);
+
+  // Lightbox: close on Escape and lock background scroll while it's open.
+  useEffect(() => {
+    if (!lightbox) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLightbox(null);
+    };
+    document.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [lightbox]);
 
   useEffect(() => {
     if (status !== 'loading') {
@@ -975,12 +993,27 @@ export default function Home() {
                     minWidth: 0,
                   }}
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={thumb.url}
-                    alt={`Thumbnail option ${thumb.id}`}
-                    style={{ width: '100%', display: 'block', aspectRatio: '16/9', objectFit: 'cover' }}
-                  />
+                  <button
+                    type="button"
+                    onClick={() => setLightbox(thumb.url)}
+                    title={t('results.enlarge')}
+                    aria-label={t('results.enlarge')}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      padding: 0,
+                      border: 'none',
+                      background: 'none',
+                      cursor: 'zoom-in',
+                    }}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={thumb.url}
+                      alt={`Thumbnail option ${thumb.id}`}
+                      style={{ width: '100%', display: 'block', aspectRatio: '16/9', objectFit: 'cover' }}
+                    />
+                  </button>
                   <div style={{ padding: 14 }}>
                     {thumb.concept_key && CONCEPT_LABEL_KEYS.has(thumb.concept_key) && (
                       <p
@@ -1031,6 +1064,56 @@ export default function Home() {
           )}
         </footer>
       </div>
+
+      {lightbox && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('results.preview')}
+          onClick={() => setLightbox(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.85)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 24,
+            zIndex: 50,
+            cursor: 'zoom-out',
+          }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightbox}
+            alt={t('results.preview')}
+            style={{
+              maxWidth: '100%',
+              maxHeight: '100%',
+              borderRadius: 12,
+              boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => setLightbox(null)}
+            aria-label={t('results.closePreview')}
+            style={{
+              position: 'absolute',
+              top: 16,
+              right: 20,
+              fontSize: 32,
+              lineHeight: 1,
+              color: '#fff',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       <style>{`
         @keyframes shimmer {

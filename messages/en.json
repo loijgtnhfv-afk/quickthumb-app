@@ -66,6 +66,9 @@
     "placeholder": "e.g. Why I crossed $10K MRR"
   },
   "results": {
+    "enlarge": "View larger",
+    "preview": "Thumbnail preview",
+    "closePreview": "Close preview",
     "heading": "{count} thumbnails ready",
     "regenerate": "Generate again",
     "download": "Download"
