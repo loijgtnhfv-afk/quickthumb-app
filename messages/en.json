@@ -62,6 +62,12 @@
     "regenerate": "Generate again",
     "download": "Download"
   },
+  "concepts": {
+    "face-surprise": "Shocked face",
+    "jp-telop": "Bold telop",
+    "global-clean": "Clean · global",
+    "action": "Action energy"
+  },
   "pricing": {
     "upgrade": "Upgrade to Pro",
     "manage": "Manage plan"

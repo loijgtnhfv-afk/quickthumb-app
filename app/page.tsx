@@ -21,6 +21,10 @@ interface Profile {
   generations_limit: number;
 }
 
+// Concept keys we have localized labels for (concepts.* in messages/*.json).
+// Guarding the lookup keeps next-intl from throwing on an unexpected key.
+const CONCEPT_LABEL_KEYS = new Set(['face-surprise', 'jp-telop', 'global-clean', 'action']);
+
 function isValidYouTubeUrl(url: string): boolean {
   const patterns = [
     // Allow the m. mobile host too — it's what the YouTube app's share sheet
@@ -917,6 +921,20 @@ export default function Home() {
                     style={{ width: '100%', display: 'block', aspectRatio: '16/9', objectFit: 'cover' }}
                   />
                   <div style={{ padding: 14 }}>
+                    {thumb.concept_key && CONCEPT_LABEL_KEYS.has(thumb.concept_key) && (
+                      <p
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 600,
+                          opacity: 0.6,
+                          margin: '0 0 10px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.04em',
+                        }}
+                      >
+                        {t(`concepts.${thumb.concept_key}`)}
+                      </p>
+                    )}
                     <button
                       onClick={() => handleDownload(thumb.url, `quickthumb-${thumb.id}.png`)}
                       style={{

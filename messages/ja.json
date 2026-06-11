@@ -62,6 +62,12 @@
     "regenerate": "もう一度生成",
     "download": "ダウンロード"
   },
+  "concepts": {
+    "face-surprise": "驚き顔",
+    "jp-telop": "テロップ強調",
+    "global-clean": "海外向けクリーン",
+    "action": "アクション"
+  },
   "pricing": {
     "upgrade": "Proにアップグレード",
     "manage": "プラン管理"
