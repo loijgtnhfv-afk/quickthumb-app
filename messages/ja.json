@@ -12,6 +12,14 @@
     "titleLine2": "60秒で。",
     "subtitle": "顔写真をアップして動画URLを貼るだけ。あなたの顔＋強いフックを1枚に焼き込んだ完成サムネを即生成。まずは無料・クレカ不要。"
   },
+  "howto": {
+    "step1Title": "顔写真をアップ",
+    "step1Body": "任意。主役はあなた。",
+    "step2Title": "動画URLを貼る",
+    "step2Body": "YouTubeのリンクでOK。",
+    "step3Title": "サムネ4枚を取得",
+    "step3Body": "約60秒で完成。"
+  },
   "form": {
     "urlLabel": "YouTubeのURL",
     "urlPlaceholder": "https://youtube.com/watch?v=...",

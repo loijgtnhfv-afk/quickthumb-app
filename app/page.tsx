@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { createClient } from '@/lib/supabase/client';
 import type { User } from '@supabase/supabase-js';
@@ -161,6 +161,15 @@ export default function Home() {
   // Elapsed seconds while a generation is in flight — drives the staged progress
   // copy + bar below so the ~40-60s wait reads as "working", not "frozen".
   const [loadingElapsed, setLoadingElapsed] = useState(0);
+  // Bring the progress/results into view on submit — on mobile they sit below
+  // the fold, so without this a tap on "Generate" looks like nothing happened.
+  const resultsAnchorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (status === 'loading') {
+      resultsAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [status]);
 
   useEffect(() => {
     if (status !== 'loading') {
@@ -568,6 +577,56 @@ export default function Home() {
           </p>
         </div>
 
+        {/* How it works — 3 steps (first-timer clarity) */}
+        <div
+          style={{
+            display: 'flex',
+            gap: 12,
+            justifyContent: 'center',
+            flexWrap: 'wrap',
+            marginBottom: 28,
+          }}
+        >
+          {[1, 2, 3].map((n) => (
+            <div
+              key={n}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '10px 16px',
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 12,
+                flex: '1 1 200px',
+                maxWidth: 280,
+              }}
+            >
+              <span
+                style={{
+                  flexShrink: 0,
+                  width: 26,
+                  height: 26,
+                  borderRadius: '50%',
+                  background: 'linear-gradient(135deg, #a78bfa 0%, #f0abfc 100%)',
+                  color: '#0f0c29',
+                  fontWeight: 700,
+                  fontSize: 14,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {n}
+              </span>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>{t(`howto.step${n}Title`)}</div>
+                <div style={{ fontSize: 12, opacity: 0.6 }}>{t(`howto.step${n}Body`)}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
         {/* Form */}
         <form
           onSubmit={handleSubmit}
@@ -827,6 +886,8 @@ export default function Home() {
             {t('form.urlHint')}
           </p>
         </form>
+
+        <div ref={resultsAnchorRef} />
 
         {status === 'loading' && (
           <div>
