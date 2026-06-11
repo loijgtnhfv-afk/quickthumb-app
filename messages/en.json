@@ -30,6 +30,13 @@
     "errorServer": "Something went wrong. Please try again.",
     "urlHint": "Works with youtube.com/watch, youtu.be, and Shorts links."
   },
+  "loading": {
+    "stage0": "Reading your video…",
+    "stage1": "Designing 4 concepts…",
+    "stage2": "Generating your thumbnails…",
+    "stage3": "Almost done — adding the finishing touches…",
+    "estimate": "This usually takes 40–60 seconds. Hang tight."
+  },
   "persona": {
     "label": "Your face (optional)",
     "hint": "Star in your own thumbnails — upload a clear photo of your face.",

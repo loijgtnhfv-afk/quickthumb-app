@@ -154,6 +154,21 @@ export default function Home() {
   // (right-of-publicity). Gates the file input; also sent to / enforced by the API.
   const [personaConsent, setPersonaConsent] = useState(false);
   const [customText, setCustomText] = useState('');
+  // Elapsed seconds while a generation is in flight — drives the staged progress
+  // copy + bar below so the ~40-60s wait reads as "working", not "frozen".
+  const [loadingElapsed, setLoadingElapsed] = useState(0);
+
+  useEffect(() => {
+    if (status !== 'loading') {
+      setLoadingElapsed(0);
+      return;
+    }
+    const started = Date.now();
+    const id = setInterval(() => {
+      setLoadingElapsed(Math.floor((Date.now() - started) / 1000));
+    }, 500);
+    return () => clearInterval(id);
+  }, [status]);
 
   useEffect(() => {
     let mounted = true;
@@ -408,6 +423,13 @@ export default function Home() {
 
   const remaining = profile ? Math.max(0, profile.generations_limit - profile.generations_used) : null;
 
+  // Staged feedback for the in-flight generation. The client can't see real
+  // backend progress, so advance through reassuring stages on a timer keyed to
+  // typical latency; the bar eases toward (but never reaches) 100% until done.
+  const loadingStage =
+    loadingElapsed < 7 ? 0 : loadingElapsed < 20 ? 1 : loadingElapsed < 40 ? 2 : 3;
+  const loadingProgress = Math.min(95, Math.round((loadingElapsed / 55) * 100));
+
   return (
     <main
       style={{
@@ -607,6 +629,7 @@ export default function Home() {
           </div>
           {error && (
             <div
+              role="alert"
               style={{
                 marginTop: 14,
                 padding: '10px 14px',
@@ -802,20 +825,46 @@ export default function Home() {
         </form>
 
         {status === 'loading' && (
-          <div className="thumb-row">
-            {[0, 1, 2, 3].map((i) => (
+          <div>
+            <div role="status" aria-live="polite" style={{ textAlign: 'center', marginBottom: 18 }}>
+              <p style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>{t(`loading.stage${loadingStage}`)}</p>
+              <p style={{ fontSize: 13, opacity: 0.6, margin: '6px 0 0' }}>{t('loading.estimate')}</p>
               <div
-                key={i}
                 style={{
-                  aspectRatio: '16/9',
-                  background:
-                    'linear-gradient(90deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.04) 100%)',
-                  backgroundSize: '200% 100%',
-                  borderRadius: 12,
-                  animation: 'shimmer 1.5s infinite linear',
+                  maxWidth: 320,
+                  height: 4,
+                  margin: '14px auto 0',
+                  background: 'rgba(255,255,255,0.12)',
+                  borderRadius: 999,
+                  overflow: 'hidden',
                 }}
-              />
-            ))}
+              >
+                <div
+                  style={{
+                    width: `${loadingProgress}%`,
+                    height: '100%',
+                    background: 'linear-gradient(90deg, #a78bfa, #f0abfc)',
+                    borderRadius: 999,
+                    transition: 'width 0.5s ease',
+                  }}
+                />
+              </div>
+            </div>
+            <div className="thumb-row">
+              {[0, 1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  style={{
+                    aspectRatio: '16/9',
+                    background:
+                      'linear-gradient(90deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.04) 100%)',
+                    backgroundSize: '200% 100%',
+                    borderRadius: 12,
+                    animation: 'shimmer 1.5s infinite linear',
+                  }}
+                />
+              ))}
+            </div>
           </div>
         )}
 
