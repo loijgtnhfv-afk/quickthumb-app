@@ -1,53 +1,83 @@
 /**
- * One-off: generate the social/OG share image at public/og-image.png (1200x630).
- * Faceless, brand-styled, generated with Nano Banana Pro then cropped to OG size.
+ * Generate the social/OG share image at public/og-image.png (1200x630).
+ *
+ * v2 (2026-06-12): deterministic sharp/SVG composite — brand gradient + the
+ * REAL example thumbnails from public/examples/ (same AI-fictional-persona
+ * samples the landing gallery shows), so social shares show actual product
+ * output instead of a generic branded card. No API calls, no cost, no
+ * text-garble risk (text is vector SVG, images are the committed JPEGs).
  *
  *   node_modules/.bin/tsx scripts/gen-og.ts
- *
- * Needs only REPLICATE_API_TOKEN (read from .env.local, never printed).
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import Replicate from 'replicate';
 import sharp from 'sharp';
 
-const raw = readFileSync(join(process.cwd(), '.env.local'), 'utf8');
-for (const line of raw.split(/\r?\n/)) {
-  const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
-  if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^"|"$/g, '');
-}
-if (!process.env.REPLICATE_API_TOKEN) {
-  console.error('REPLICATE_API_TOKEN missing');
-  process.exit(1);
-}
+const W = 1200;
+const H = 630;
 
-const PROMPT =
-  'A clean, premium promotional banner image for a SaaS, NO people. Deep purple-to-indigo diagonal gradient background (from #0f0c29 to #302b63) with soft glowing light. Centered, very large bold white text reading EXACTLY the single word "Quickthumb", and directly below it a smaller crisp tagline reading EXACTLY "Paste a URL. Win the click." On the right, a sleek floating YouTube-style 16:9 video thumbnail card with a red play button. Modern, high-end, lots of clean negative space, sharp legible typography. 16:9.';
+// Front/back sample cards: jp-telop (dense JP idiom, most striking) in front,
+// global-clean (clean EN idiom) behind — together they show the JP + global
+// localized-thumbnail wedge in one glance.
+const CARD_W = 470;
+const CARD_H = Math.round((CARD_W * 9) / 16);
+
+function cardDataUri(file: string): string {
+  const jpeg = readFileSync(join(process.cwd(), 'public', 'examples', file));
+  return `data:image/jpeg;base64,${jpeg.toString('base64')}`;
+}
 
 async function main() {
-  const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
-  const out = await replicate.run('google/nano-banana-pro', {
-    input: { prompt: PROMPT, image_input: [], aspect_ratio: '16:9', resolution: '2K', output_format: 'jpg' },
-  });
-  let item: unknown = Array.isArray(out) ? out[0] : out;
-  let bytes: Buffer | null = null;
-  if (item && typeof (item as { blob?: () => Promise<Blob> }).blob === 'function') {
-    bytes = Buffer.from(await (await (item as { blob: () => Promise<Blob> }).blob()).arrayBuffer());
-  } else {
-    const url =
-      typeof item === 'string'
-        ? item
-        : item && typeof (item as { url?: () => string }).url === 'function'
-        ? String((item as { url: () => string }).url())
-        : undefined;
-    if (url) bytes = Buffer.from(await (await fetch(url)).arrayBuffer());
-  }
-  if (!bytes) throw new Error('no image');
-  // Crop/resize to the standard OG size 1200x630.
-  const og = await sharp(bytes).resize(1200, 630, { fit: 'cover', position: 'center' }).png().toBuffer();
+  const back = cardDataUri('global-clean.jpg');
+  const front = cardDataUri('jp-telop.jpg');
+
+  const svg = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f0c29"/>
+      <stop offset="50%" stop-color="#302b63"/>
+      <stop offset="100%" stop-color="#24243e"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#a78bfa" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="#a78bfa" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="card"><rect x="0" y="0" width="${CARD_W}" height="${CARD_H}" rx="16"/></clipPath>
+  </defs>
+  <rect width="${W}" height="${H}" fill="url(#bg)"/>
+  <ellipse cx="930" cy="280" rx="520" ry="420" fill="url(#glow)"/>
+
+  <!-- back card: global-clean (EN idiom) -->
+  <g transform="translate(700,86) rotate(5)">
+    <rect x="10" y="14" width="${CARD_W}" height="${CARD_H}" rx="16" fill="rgba(0,0,0,0.45)"/>
+    <g clip-path="url(#card)">
+      <image href="${back}" xlink:href="${back}" width="${CARD_W}" height="${CARD_H}" preserveAspectRatio="xMidYMid slice"/>
+    </g>
+    <rect x="0" y="0" width="${CARD_W}" height="${CARD_H}" rx="16" fill="none" stroke="rgba(255,255,255,0.30)" stroke-width="2"/>
+  </g>
+
+  <!-- front card: jp-telop (JP idiom) -->
+  <g transform="translate(620,268) rotate(-6)">
+    <rect x="12" y="16" width="${CARD_W}" height="${CARD_H}" rx="16" fill="rgba(0,0,0,0.5)"/>
+    <g clip-path="url(#card)">
+      <image href="${front}" xlink:href="${front}" width="${CARD_W}" height="${CARD_H}" preserveAspectRatio="xMidYMid slice"/>
+    </g>
+    <rect x="0" y="0" width="${CARD_W}" height="${CARD_H}" rx="16" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="2"/>
+  </g>
+
+  <g font-family="Segoe UI, Arial, sans-serif">
+    <text x="76" y="262" font-size="86" font-weight="800" fill="#ffffff">Quickthumb</text>
+    <text x="80" y="322" font-size="30" fill="rgba(255,255,255,0.85)">Paste a URL. Win the click.</text>
+    <text x="80" y="368" font-size="22" fill="rgba(255,255,255,0.62)">Your face + a bold hook</text>
+    <text x="80" y="400" font-size="22" fill="rgba(255,255,255,0.62)">4 finished thumbnails in ~60s</text>
+  </g>
+</svg>`;
+
+  const og = await sharp(Buffer.from(svg)).png().toBuffer();
   writeFileSync(join(process.cwd(), 'public', 'og-image.png'), og);
   console.log(`Wrote public/og-image.png (${(og.length / 1024).toFixed(0)}KB)`);
 }
+
 main().catch((e) => {
   console.error('gen-og failed:', e);
   process.exit(1);
