@@ -79,6 +79,12 @@
     "global-clean": "Clean · global",
     "action": "Action energy"
   },
+  "examples": {
+    "heading": "What you actually get",
+    "subtitle": "Real, unedited output — same face, four different concepts. In a real run, all 4 come from your single URL.",
+    "note": "The person in these samples is an AI-generated fictional persona. Your thumbnails use your own uploaded photo.",
+    "alt": "Example thumbnail — {label}"
+  },
   "pricing": {
     "upgrade": "Upgrade to Pro",
     "manage": "Manage plan"

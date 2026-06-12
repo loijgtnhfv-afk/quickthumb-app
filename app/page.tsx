@@ -25,6 +25,17 @@ interface Profile {
 // Guarding the lookup keeps next-intl from throwing on an unexpected key.
 const CONCEPT_LABEL_KEYS = new Set(['face-surprise', 'jp-telop', 'global-clean', 'action']);
 
+// Landing-page example gallery: real, unedited output of the production
+// pipeline (generated via scripts/gen-examples.ts). The face in the samples is
+// an AI-created FICTIONAL persona — never a real person — so they are
+// publishable without likeness concerns.
+const EXAMPLES = [
+  { key: 'face-surprise', src: '/examples/face-surprise.jpg' },
+  { key: 'jp-telop', src: '/examples/jp-telop.jpg' },
+  { key: 'global-clean', src: '/examples/global-clean.jpg' },
+  { key: 'action', src: '/examples/action.jpg' },
+] as const;
+
 function isValidYouTubeUrl(url: string): boolean {
   const patterns = [
     // Allow the m. mobile host too — it's what the YouTube app's share sheet
@@ -167,6 +178,10 @@ export default function Home() {
   // Bring the progress/results into view on submit — on mobile they sit below
   // the fold, so without this a tap on "Generate" looks like nothing happened.
   const resultsAnchorRef = useRef<HTMLDivElement>(null);
+  // Focus target when the lightbox opens: aria-modal hides the rest of the page
+  // from assistive tech, so focus must move INTO the dialog or a screen-reader
+  // user is left stranded on content their SR now treats as nonexistent.
+  const lightboxCloseRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (status === 'loading') {
@@ -183,6 +198,8 @@ export default function Home() {
     document.addEventListener('keydown', onKey);
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+    // Trigger focus is never moved, so closing restores it for free.
+    lightboxCloseRef.current?.focus();
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = prevOverflow;
@@ -993,11 +1010,12 @@ export default function Home() {
                     minWidth: 0,
                   }}
                 >
+                  {/* No aria-label: it would mask the img alt, leaving identical
+                      "view larger" names — the alt names the button instead. */}
                   <button
                     type="button"
                     onClick={() => setLightbox(thumb.url)}
                     title={t('results.enlarge')}
-                    aria-label={t('results.enlarge')}
                     style={{
                       display: 'block',
                       width: '100%',
@@ -1052,6 +1070,78 @@ export default function Home() {
           </>
         )}
 
+        {/* Example gallery — lets a signed-out visitor judge output quality
+            before signing up. Hidden while a generation is in flight or its
+            results are showing, so it never competes with the user's own. */}
+        {status !== 'loading' && status !== 'success' && (
+          <section aria-labelledby="examples-heading" style={{ marginTop: 8 }}>
+            <div style={{ textAlign: 'center', marginBottom: 18 }}>
+              <h2 id="examples-heading" style={{ fontSize: 22, margin: 0, fontWeight: 700 }}>
+                {t('examples.heading')}
+              </h2>
+              <p style={{ fontSize: 14, opacity: 0.65, maxWidth: 600, margin: '8px auto 0' }}>
+                {t('examples.subtitle')}
+              </p>
+            </div>
+            <div className="thumb-row">
+              {EXAMPLES.map((ex) => (
+                <figure key={ex.key} style={{ margin: 0, minWidth: 0 }}>
+                  {/* No aria-label: the img alt (concept-specific) names the button. */}
+                  <button
+                    type="button"
+                    onClick={() => setLightbox(ex.src)}
+                    title={t('results.enlarge')}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      padding: 0,
+                      border: '1px solid rgba(255,255,255,0.12)',
+                      borderRadius: 12,
+                      overflow: 'hidden',
+                      background: 'none',
+                      cursor: 'zoom-in',
+                    }}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={ex.src}
+                      alt={t('examples.alt', { label: t(`concepts.${ex.key}`) })}
+                      loading="lazy"
+                      width={1280}
+                      height={720}
+                      style={{
+                        width: '100%',
+                        height: 'auto',
+                        display: 'block',
+                        aspectRatio: '16/9',
+                        objectFit: 'cover',
+                      }}
+                    />
+                  </button>
+                  <figcaption
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 600,
+                      opacity: 0.6,
+                      margin: '8px 2px 0',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                    }}
+                  >
+                    {t(`concepts.${ex.key}`)}
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+            {/* opacity >= 0.6 keeps this disclosure above the 4.5:1 AA contrast
+                minimum over the page gradient — it carries the honesty/legal
+                note, so it must stay readable. */}
+            <p style={{ fontSize: 11, opacity: 0.6, textAlign: 'center', marginTop: 12 }}>
+              {t('examples.note')}
+            </p>
+          </section>
+        )}
+
         <footer style={{ textAlign: 'center', marginTop: 64, fontSize: 13, opacity: 0.5 }}>
           {t('footer.copyright')} ·{' '}
           <a href="/terms.html" style={{ color: 'inherit' }}>{t('footer.terms')}</a> ·{' '}
@@ -1071,6 +1161,11 @@ export default function Home() {
           aria-modal="true"
           aria-label={t('results.preview')}
           onClick={() => setLightbox(null)}
+          onKeyDown={(e) => {
+            // The close button is the dialog's only focusable element — pin
+            // Tab there so keyboard focus can't escape the open modal.
+            if (e.key === 'Tab') e.preventDefault();
+          }}
           style={{
             position: 'fixed',
             inset: 0,
@@ -1096,6 +1191,7 @@ export default function Home() {
           />
           <button
             type="button"
+            ref={lightboxCloseRef}
             onClick={() => setLightbox(null)}
             aria-label={t('results.closePreview')}
             style={{

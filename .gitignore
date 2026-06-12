@@ -51,3 +51,4 @@ references/*/*.webp
 .claude/
 npm-install.log
 package-lock.json
+.preview-examples/
