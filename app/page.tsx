@@ -449,15 +449,27 @@ export default function Home() {
     }
   };
 
-  const handleDownload = (downloadUrl: string, filename: string) => {
-    const a = document.createElement('a');
-    a.href = downloadUrl;
-    a.download = filename;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+  // Force a real file download. Our thumbnails live on Supabase storage, and a
+  // browser IGNORES the `download` attribute (filename + save) on a cross-origin
+  // <a>, so the old link just opened the image in a new tab. Fetch the bytes and
+  // download via a same-origin object URL instead. Fall back to opening the URL
+  // if the fetch is CORS-blocked or times out — never worse than the old path.
+  const handleDownload = async (downloadUrl: string, filename: string) => {
+    try {
+      const res = await fetch(downloadUrl, { signal: AbortSignal.timeout(15000) });
+      if (!res.ok) throw new Error(`fetch ${res.status}`);
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      window.open(downloadUrl, '_blank', 'noopener,noreferrer');
+    }
   };
 
   // "Generate again" — keep the uploaded persona so the user doesn't re-upload.
@@ -760,7 +772,7 @@ export default function Home() {
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={personaUrl}
-                  alt="Your face"
+                  alt={t('persona.photoAlt')}
                   style={{
                     width: 44,
                     height: 44,
@@ -1028,7 +1040,11 @@ export default function Home() {
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={thumb.url}
-                      alt={`Thumbnail option ${thumb.id}`}
+                      alt={
+                        thumb.concept_key && CONCEPT_LABEL_KEYS.has(thumb.concept_key)
+                          ? t('results.alt', { label: t(`concepts.${thumb.concept_key}`) })
+                          : t('results.altPlain')
+                      }
                       style={{ width: '100%', display: 'block', aspectRatio: '16/9', objectFit: 'cover' }}
                     />
                   </button>

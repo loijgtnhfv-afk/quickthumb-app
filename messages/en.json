@@ -46,6 +46,7 @@
     "estimate": "This usually takes 40–60 seconds. Hang tight."
   },
   "persona": {
+    "photoAlt": "Your uploaded photo",
     "label": "Your face (optional)",
     "hint": "Star in your own thumbnails — upload a clear photo of your face.",
     "upload": "Upload photo",
@@ -66,6 +67,8 @@
     "placeholder": "e.g. Why I crossed $10K MRR"
   },
   "results": {
+    "alt": "Generated thumbnail — {label}",
+    "altPlain": "Generated thumbnail",
     "enlarge": "View larger",
     "preview": "Thumbnail preview",
     "closePreview": "Close preview",
