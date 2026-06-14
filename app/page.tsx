@@ -341,7 +341,7 @@ export default function Home() {
       if (!res.ok) {
         setPersonaError(
           res.status === 422
-            ? t('persona.faceRejected')
+            ? t(data.reason === 'multiple_faces' ? 'persona.faceRejectedMultiple' : 'persona.faceRejected')
             : data.code === 'too_large'
             ? t('persona.tooLarge')
             : data.code === 'consent'
@@ -1160,12 +1160,14 @@ export default function Home() {
 
         <footer style={{ textAlign: 'center', marginTop: 64, fontSize: 13, opacity: 0.5 }}>
           {t('footer.copyright')} ·{' '}
-          <a href="/terms.html" style={{ color: 'inherit' }}>{t('footer.terms')}</a> ·{' '}
-          <a href="/privacy.html" style={{ color: 'inherit' }}>{t('footer.privacy')}</a>
+          {/* Open legal pages in a new tab so a visitor mid-form doesn't lose
+              their URL / uploaded photo / caption — matches the consent-note links. */}
+          <a href="/terms.html" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit' }}>{t('footer.terms')}</a> ·{' '}
+          <a href="/privacy.html" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit' }}>{t('footer.privacy')}</a>
           {billingOn && (
             <>
               {' · '}
-              <a href="/tokushoho.html" style={{ color: 'inherit' }}>{t('footer.tokushoho')}</a>
+              <a href="/tokushoho.html" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit' }}>{t('footer.tokushoho')}</a>
             </>
           )}
         </footer>

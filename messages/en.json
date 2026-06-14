@@ -59,7 +59,8 @@
     "consentRequired": "Please tick the consent box before uploading your photo.",
     "tooLarge": "That image is too large (max 4MB). Try a smaller photo.",
     "rateLimited": "Too many uploads recently. Please wait a bit and try again.",
-    "faceRejected": "We couldn’t find a single clear face in that photo. Upload a clear, front-facing photo of just your face."
+    "faceRejected": "We couldn’t find a single clear face in that photo. Upload a clear, front-facing photo of just your face.",
+    "faceRejectedMultiple": "We detected more than one face. Upload a photo of just yourself."
   },
   "caption": {
     "label": "Caption (optional)",
