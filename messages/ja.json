@@ -77,6 +77,10 @@
     "regenerate": "もう一度生成",
     "download": "ダウンロード"
   },
+  "share": {
+    "button": "シェア",
+    "text": "AIでYouTubeのサムネを60秒で作りました 🎬 #Quickthumb"
+  },
   "concepts": {
     "face-surprise": "驚き顔",
     "jp-telop": "テロップ強調",

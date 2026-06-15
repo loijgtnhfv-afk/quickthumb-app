@@ -472,6 +472,51 @@ export default function Home() {
     }
   };
 
+  // Share a finished thumbnail. On mobile / supporting browsers this opens the
+  // native share sheet (ideally with the image file attached); elsewhere it
+  // falls back to an X/Twitter intent carrying our page URL (whose OG card shows
+  // a sample). Sharing the output is the cheapest organic growth loop for a free
+  // launch, so make it one tap.
+  const handleShare = async (shareUrl: string, id: number) => {
+    const text = t('share.text');
+    const pageUrl = 'https://quickthumb.app';
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      try {
+        let file: File | null = null;
+        try {
+          const res = await fetch(shareUrl, { signal: AbortSignal.timeout(15000) });
+          if (res.ok) {
+            const blob = await res.blob();
+            const candidate = new File([blob], `quickthumb-${id}.png`, {
+              type: blob.type || 'image/png',
+            });
+            if (navigator.canShare?.({ files: [candidate] })) file = candidate;
+          }
+        } catch {
+          // Image fetch failed (CORS/timeout) → share the text + link only.
+        }
+        await navigator.share(file ? { files: [file], text, url: pageUrl } : { text, url: pageUrl });
+        return;
+      } catch (err) {
+        // User dismissed the native share sheet → stop (don't also pop a Twitter
+        // tab). Dismissal surfaces as AbortError on most browsers and as
+        // NotAllowedError on some Android Chrome versions.
+        if (
+          err instanceof DOMException &&
+          (err.name === 'AbortError' || err.name === 'NotAllowedError')
+        )
+          return;
+        // Any other failure (e.g. this browser can't share this payload) falls
+        // through to the intent-URL fallback below.
+      }
+    }
+    window.open(
+      `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(pageUrl)}`,
+      '_blank',
+      'noopener,noreferrer'
+    );
+  };
+
   // "Generate again" — keep the uploaded persona so the user doesn't re-upload.
   const handleReset = () => {
     setUrl('');
@@ -1063,22 +1108,44 @@ export default function Home() {
                         {t(`concepts.${thumb.concept_key}`)}
                       </p>
                     )}
-                    <button
-                      onClick={() => handleDownload(thumb.url, `quickthumb-${thumb.id}.png`)}
-                      style={{
-                        width: '100%',
-                        padding: '10px 14px',
-                        fontSize: 14,
-                        fontWeight: 600,
-                        color: '#0f0c29',
-                        background: '#fff',
-                        border: 'none',
-                        borderRadius: 8,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {t('results.download')}
-                    </button>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        type="button"
+                        onClick={() => handleDownload(thumb.url, `quickthumb-${thumb.id}.png`)}
+                        style={{
+                          flex: 1,
+                          padding: '10px 14px',
+                          fontSize: 14,
+                          fontWeight: 600,
+                          color: '#0f0c29',
+                          background: '#fff',
+                          border: 'none',
+                          borderRadius: 8,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {t('results.download')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleShare(thumb.url, thumb.id)}
+                        title={t('share.button')}
+                        aria-label={t('share.button')}
+                        style={{
+                          flexShrink: 0,
+                          padding: '10px 16px',
+                          fontSize: 14,
+                          fontWeight: 600,
+                          color: '#fff',
+                          background: 'transparent',
+                          border: '1px solid rgba(255,255,255,0.3)',
+                          borderRadius: 8,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {t('share.button')}
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}

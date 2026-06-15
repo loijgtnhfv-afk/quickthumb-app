@@ -77,6 +77,10 @@
     "regenerate": "Generate again",
     "download": "Download"
   },
+  "share": {
+    "button": "Share",
+    "text": "Made this YouTube thumbnail with AI in 60s 🎬 #Quickthumb"
+  },
   "concepts": {
     "face-surprise": "Shocked face",
     "jp-telop": "Bold telop",
