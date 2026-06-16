@@ -68,6 +68,7 @@
     "placeholder": "e.g. Why I crossed $10K MRR"
   },
   "results": {
+    "shareNudge": "Like one? Tap Share to post it — and help more creators find Quickthumb.",
     "alt": "Generated thumbnail — {label}",
     "altPlain": "Generated thumbnail",
     "enlarge": "View larger",

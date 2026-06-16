@@ -68,6 +68,7 @@
     "placeholder": "例: 月収100万になった理由"
   },
   "results": {
+    "shareNudge": "気に入った1枚があれば「シェア」から投稿してね。Quickthumbの応援にもなります。",
     "alt": "生成したサムネ — {label}",
     "altPlain": "生成したサムネ",
     "enlarge": "拡大表示",

@@ -1075,6 +1075,9 @@ export default function Home() {
                 {t('results.regenerate')}
               </button>
             </div>
+            <p style={{ fontSize: 13, opacity: 0.6, margin: '0 0 16px' }}>
+              {t('results.shareNudge')}
+            </p>
             <div className="thumb-row">
               {results.map((thumb) => (
                 <div
