@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "verify:fit": "tsx scripts/verify-fit.ts",
+    "verify:persona-path": "tsx scripts/verify-persona-path.ts",
     "verify:prod-env": "tsx scripts/verify-prod-env.ts",
     "extract-descriptors": "tsx scripts/extract-style-descriptors.ts",
     "collect-trending": "tsx scripts/collect-trending-thumbs.ts",
