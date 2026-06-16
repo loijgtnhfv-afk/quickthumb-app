@@ -485,10 +485,12 @@ export default function Home() {
   const handleShare = async (shareUrl: string, id: number) => {
     if (sharingRef.current) return; // ignore taps while a share is already running
     const text = t('share.text');
-    const pageUrl = 'https://quickthumb.app';
+    // Share the /s landing page (not the bare homepage) so the link's OG card
+    // previews THIS thumbnail — the viral loop. The image URL is already public.
+    const shareLink = `https://quickthumb.app/s?i=${encodeURIComponent(shareUrl)}`;
     const openIntent = () =>
       window.open(
-        `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(pageUrl)}`,
+        `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(shareLink)}`,
         '_blank',
         'noopener,noreferrer'
       );
@@ -500,7 +502,7 @@ export default function Home() {
     const canNativeShare =
       typeof navigator !== 'undefined' &&
       typeof navigator.share === 'function' &&
-      (!navigator.canShare || navigator.canShare({ text, url: pageUrl }));
+      (!navigator.canShare || navigator.canShare({ text, url: shareLink }));
     if (!canNativeShare) {
       openIntent();
       return;
@@ -522,7 +524,7 @@ export default function Home() {
       } catch {
         // Image fetch failed (CORS/timeout) → share the text + link only.
       }
-      await navigator.share(file ? { files: [file], text, url: pageUrl } : { text, url: pageUrl });
+      await navigator.share(file ? { files: [file], text, url: shareLink } : { text, url: shareLink });
     } catch (err) {
       // Only a genuine user cancel (AbortError) stays silent. Any other rejection
       // (payload rejected, unexpected policy failure) is recoverable → fall back

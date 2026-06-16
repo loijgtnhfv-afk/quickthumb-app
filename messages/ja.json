@@ -79,6 +79,11 @@
     "download": "ダウンロード"
   },
   "share": {
+    "ogTitle": "Quickthumbで作成",
+    "ogDescription": "AIで作ったYouTubeサムネ — 顔＋強いフックを60秒で。あなたも無料で作れます。",
+    "pageHeadline": "Quickthumbで作りました",
+    "pageSub": "顔写真をアップして動画URLを貼るだけ。約60秒で完成サムネが4枚。",
+    "pageCta": "無料で自分のサムネを作る",
     "button": "シェア",
     "text": "AIでYouTubeのサムネを60秒で作りました 🎬 #Quickthumb"
   },

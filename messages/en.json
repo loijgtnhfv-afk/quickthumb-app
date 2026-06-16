@@ -79,6 +79,11 @@
     "download": "Download"
   },
   "share": {
+    "ogTitle": "Made with Quickthumb",
+    "ogDescription": "An AI-generated YouTube thumbnail — your face + a bold hook in 60 seconds. Make your own, free.",
+    "pageHeadline": "Made with Quickthumb",
+    "pageSub": "Upload your face, paste a YouTube URL, and get 4 finished thumbnails in ~60 seconds.",
+    "pageCta": "Make your own — free",
     "button": "Share",
     "text": "Made this YouTube thumbnail with AI in 60s 🎬 #Quickthumb"
   },
