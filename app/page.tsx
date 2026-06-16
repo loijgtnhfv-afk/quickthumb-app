@@ -169,6 +169,11 @@ export default function Home() {
   // (right-of-publicity). Gates the file input; also sent to / enforced by the API.
   const [personaConsent, setPersonaConsent] = useState(false);
   const [customText, setCustomText] = useState('');
+  // Which result is mid-share — disables that card's Share button to stop a
+  // double-tap from launching overlapping shares. The ref is the real guard
+  // (synchronous); the state only drives the disabled visual.
+  const [sharingId, setSharingId] = useState<number | null>(null);
+  const sharingRef = useRef(false);
   // A result thumbnail opened full-size in the lightbox (null = closed). Lets a
   // user judge text legibility at real size before downloading.
   const [lightbox, setLightbox] = useState<string | null>(null);
@@ -478,43 +483,58 @@ export default function Home() {
   // a sample). Sharing the output is the cheapest organic growth loop for a free
   // launch, so make it one tap.
   const handleShare = async (shareUrl: string, id: number) => {
+    if (sharingRef.current) return; // ignore taps while a share is already running
     const text = t('share.text');
     const pageUrl = 'https://quickthumb.app';
-    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
-      try {
-        let file: File | null = null;
-        try {
-          const res = await fetch(shareUrl, { signal: AbortSignal.timeout(15000) });
-          if (res.ok) {
-            const blob = await res.blob();
-            const candidate = new File([blob], `quickthumb-${id}.png`, {
-              type: blob.type || 'image/png',
-            });
-            if (navigator.canShare?.({ files: [candidate] })) file = candidate;
-          }
-        } catch {
-          // Image fetch failed (CORS/timeout) → share the text + link only.
-        }
-        await navigator.share(file ? { files: [file], text, url: pageUrl } : { text, url: pageUrl });
-        return;
-      } catch (err) {
-        // User dismissed the native share sheet → stop (don't also pop a Twitter
-        // tab). Dismissal surfaces as AbortError on most browsers and as
-        // NotAllowedError on some Android Chrome versions.
-        if (
-          err instanceof DOMException &&
-          (err.name === 'AbortError' || err.name === 'NotAllowedError')
-        )
-          return;
-        // Any other failure (e.g. this browser can't share this payload) falls
-        // through to the intent-URL fallback below.
-      }
+    const openIntent = () =>
+      window.open(
+        `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(pageUrl)}`,
+        '_blank',
+        'noopener,noreferrer'
+      );
+
+    // Decide synchronously whether the native sheet is usable. If it isn't (no
+    // Web Share API, or canShare reports text+url is blocked — e.g. by a
+    // Permissions-Policy), open the X intent right here, INSIDE the click gesture,
+    // so popup blockers don't eat the new tab.
+    const canNativeShare =
+      typeof navigator !== 'undefined' &&
+      typeof navigator.share === 'function' &&
+      (!navigator.canShare || navigator.canShare({ text, url: pageUrl }));
+    if (!canNativeShare) {
+      openIntent();
+      return;
     }
-    window.open(
-      `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(pageUrl)}`,
-      '_blank',
-      'noopener,noreferrer'
-    );
+
+    sharingRef.current = true;
+    setSharingId(id);
+    try {
+      let file: File | null = null;
+      try {
+        const res = await fetch(shareUrl, { signal: AbortSignal.timeout(15000) });
+        if (res.ok) {
+          const blob = await res.blob();
+          const candidate = new File([blob], `quickthumb-${id}.png`, {
+            type: blob.type || 'image/png',
+          });
+          if (navigator.canShare?.({ files: [candidate] })) file = candidate;
+        }
+      } catch {
+        // Image fetch failed (CORS/timeout) → share the text + link only.
+      }
+      await navigator.share(file ? { files: [file], text, url: pageUrl } : { text, url: pageUrl });
+    } catch (err) {
+      // Only a genuine user cancel (AbortError) stays silent. Any other rejection
+      // (payload rejected, unexpected policy failure) is recoverable → fall back
+      // to the X intent. This window.open runs after the awaits so it CAN be
+      // popup-blocked in that rare case; we intentionally don't pre-open a tab —
+      // it would flash a blank tab on every successful share and can break the
+      // share gesture on mobile.
+      if (!(err instanceof DOMException && err.name === 'AbortError')) openIntent();
+    } finally {
+      sharingRef.current = false;
+      setSharingId(null);
+    }
   };
 
   // "Generate again" — keep the uploaded persona so the user doesn't re-upload.
@@ -1129,6 +1149,7 @@ export default function Home() {
                       <button
                         type="button"
                         onClick={() => handleShare(thumb.url, thumb.id)}
+                        disabled={sharingId === thumb.id}
                         title={t('share.button')}
                         aria-label={t('share.button')}
                         style={{
@@ -1140,7 +1161,8 @@ export default function Home() {
                           background: 'transparent',
                           border: '1px solid rgba(255,255,255,0.3)',
                           borderRadius: 8,
-                          cursor: 'pointer',
+                          cursor: sharingId === thumb.id ? 'wait' : 'pointer',
+                          opacity: sharingId === thumb.id ? 0.5 : 1,
                         }}
                       >
                         {t('share.button')}
