@@ -1,5 +1,26 @@
 # Quickthumb — Phase 2 plan
 
+> ## ⚠️ UNIT CHANGED 2026-07-27 — READ BEFORE FOLLOWING ANY STEP BELOW
+>
+> The quota unit is now **one generated IMAGE**, not one generation, because the
+> style picker grew to 12 and a single request can produce up to 12 images.
+>
+> | old (obsolete below) | current |
+> |---|---|
+> | `profiles.generations_used` / `generations_limit` | **`image_credits_used` / `image_credits_limit`** |
+> | `STRIPE_PRO_GENERATIONS_LIMIT` (=20) | **`STRIPE_PRO_IMAGE_CREDITS`** (=80, i.e. 20×4) |
+> | `FREE_GENERATIONS_LIMIT` (=1) | **`FREE_IMAGE_CREDITS`** (=4) |
+>
+> ⚠️ The env var was RENAMED on purpose. A stale `STRIPE_PRO_GENERATIONS_LIMIT=20`
+> left in Vercel is simply not read; reusing the old name would have handed Pro
+> subscribers 20 images instead of 80.
+>
+> Schema: `supabase/migrations/20260727_image_credits.sql` (already applied to prod).
+> Everything below still describes the OLD column names — treat the numbers as
+> ×4 and the names as renamed. The smoke test in §2 should expect
+> `image_credits_limit=80` on upgrade and `=4` after cancel.
+
+
 Drafted 2026-06-03 from a web-grounded research pass (Stripe / Supabase / Google / Anthropic primary docs). Phase-1 (Nano Banana Pro engine + persona face upload) is live; this is what's next.
 
 ## 0. Pricing — FREE TIER DECIDED 2026-06-06 (Pro/Pro Max prices below, confirm at Stripe activation)

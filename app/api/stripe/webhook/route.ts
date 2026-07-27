@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
               console.warn('subscription retrieve for period end failed:', e instanceof Error ? e.message : e);
             }
           }
-          await admin
+          const { error: fulfilErr } = await admin
             .from('profiles')
             .update({
               plan: 'pro',
@@ -80,6 +80,16 @@ export async function POST(request: NextRequest) {
               ...(periodEndIso ? { current_period_end: periodEndIso } : {}),
             })
             .eq('id', userId);
+          // This is fulfillment: the money has already been taken. Swallowing a
+          // failed write here returns 200, Stripe records the event as
+          // delivered and never retries, and the customer is charged for a Pro
+          // plan they never receive. A 500 makes Stripe retry instead, which is
+          // safe because every write in this handler SETS target state rather
+          // than incrementing.
+          if (fulfilErr) {
+            console.error('stripe webhook: fulfillment update failed', fulfilErr);
+            return new Response('fulfillment update failed', { status: 500 });
+          }
         }
         break;
       }
@@ -120,14 +130,21 @@ export async function POST(request: NextRequest) {
           update.current_period_end = periodEndIso;
         }
         if (renewed && trulyActive) update.image_credits_used = 0;
-        await admin.from('profiles').update(update).eq('stripe_customer_id', customerId);
+        const { error: updErr } = await admin
+          .from('profiles')
+          .update(update)
+          .eq('stripe_customer_id', customerId);
+        if (updErr) {
+          console.error('stripe webhook: subscription.updated write failed', updErr);
+          return new Response('subscription update failed', { status: 500 });
+        }
         break;
       }
       case 'customer.subscription.deleted': {
         const sub = event.data.object as Stripe.Subscription;
         const customerId = customerIdOf(sub.customer);
         if (!customerId) break;
-        await admin
+        const { error: delErr } = await admin
           .from('profiles')
           .update({
             plan: 'free',
@@ -136,6 +153,13 @@ export async function POST(request: NextRequest) {
             image_credits_limit: FREE_IMAGE_CREDITS,
           })
           .eq('stripe_customer_id', customerId);
+        // Failing loudly matters in the other direction here: a silently
+        // dropped cancellation leaves a former subscriber on the Pro limit
+        // indefinitely.
+        if (delErr) {
+          console.error('stripe webhook: subscription.deleted write failed', delErr);
+          return new Response('cancellation update failed', { status: 500 });
+        }
         break;
       }
       default:
