@@ -148,10 +148,18 @@ type Score = {
  * Ask Vision to TRANSCRIBE rather than to judge. "Is this correct?" invites
  * agreement; "write down exactly what characters you see" is checkable, and
  * the comparison against the expected hook happens here in code.
+ *
+ * ⚠️ TRUST THIS LESS THAN YOU WANT TO. On the first real run, Haiku misread
+ * heavy display-weight Japanese badly and consistently: 結末 → "禁止手",
+ * 知らないと損 → "知らないいと撲", 10万 → "1075". Every one of those images was
+ * in fact rendered perfectly. A scored run therefore UNDER-reports accuracy,
+ * and a low score means "look at the images", never "the engine failed".
+ * Sonnet is used here because it reads display type far more reliably, but the
+ * images are always written to disk precisely so a human can overrule this.
  */
 async function scoreImage(anthropic: Anthropic, jpg: Buffer, hook: string): Promise<Score> {
   const msg = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
+    model: 'claude-sonnet-5',
     max_tokens: 500,
     messages: [
       {
@@ -183,13 +191,19 @@ Reply with ONLY this JSON:
   const seen = Array.isArray(p.text_seen) ? p.text_seen.map((s) => String(s).trim()).filter(Boolean) : [];
   const norm = (s: string) => s.replace(/[\s「」『』"'’”]/g, '');
   const target = norm(hook);
-  const hookExact = seen.some((s) => norm(s) === target);
+  // Compare against the CONCATENATION, not each element. Hooks are routinely
+  // set on two lines, and the transcriber returns one array entry per line —
+  // "新NISAの正解" comes back as ["新NISA","の正解"], which is a perfectly
+  // rendered hook that per-element matching scores as a failure.
+  const joined = norm(seen.join(''));
+  const hookExact = joined.includes(target) || seen.some((s) => norm(s) === target);
   return {
     textSeen: seen,
     hookExact,
     hookGarbled: !hookExact || !!p.any_malformed_characters,
-    // Anything beyond the hook is the "invented signage" failure NO_EXTRA_TEXT exists to stop.
-    extraText: seen.filter((s) => norm(s) !== target).length > 0,
+    // Anything beyond the hook is the "invented signage" failure NO_EXTRA_TEXT
+    // exists to stop. Measured on the leftover after removing the hook.
+    extraText: hookExact ? joined.replace(target, '').length > 0 : seen.length > 1,
     faceLooksReal: p.face_photographic !== false,
     note: String(p.note ?? '').slice(0, 160),
   };
@@ -213,9 +227,14 @@ async function main() {
     console.error('Put REPLICATE_API_TOKEN (and OPENAI_API_KEY for gpt-image-2) in .env.local.');
     process.exit(1);
   }
-  if (!process.env.ANTHROPIC_API_KEY) {
-    console.error('ANTHROPIC_API_KEY missing from .env.local — needed to score the results.');
-    process.exit(1);
+  // Scoring is optional. Vercel marks ANTHROPIC_API_KEY as Sensitive, which
+  // means it cannot be copied back out of the dashboard — so rather than make
+  // the whole bake-off depend on re-issuing a key, generate the images and let
+  // a human (or an agent with vision) read them. The measurement is the same
+  // question either way: does the hook read exactly right?
+  const scoring = !!process.env.ANTHROPIC_API_KEY && !args.includes('--no-score');
+  if (!scoring) {
+    console.log('No ANTHROPIC_API_KEY (or --no-score): generating images only, scoring left to you.\n');
   }
 
   let faceRef: string | null = null;
@@ -237,7 +256,7 @@ async function main() {
       `face=${useFace ? 'yes' : 'no'}, est. $${estimate.toFixed(2)}\n`
   );
 
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const anthropic = scoring ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
   mkdirSync(OUT_DIR, { recursive: true });
   const results: Record<string, (Score & { concept: string; hook: string; ms: number; failed?: string })[]> = {};
 
@@ -257,13 +276,22 @@ async function main() {
         const jpg = await engine.generate(prompt, faceRef);
         const ms = Date.now() - t0;
         writeFileSync(join(OUT_DIR, engine.id, `${c.concept}.jpg`), jpg);
-        const score = await scoreImage(anthropic, jpg, c.hook);
-        results[engine.id].push({ ...score, concept: c.concept, hook: c.hook, ms });
-        console.log(
-          `${(ms / 1000).toFixed(0)}s | text ${score.hookExact ? 'OK' : 'WRONG'}` +
-            `${score.extraText ? ' | +extra text' : ''}${score.faceLooksReal ? '' : ' | face not photographic'}`
-        );
-        if (!score.hookExact) console.log(`      saw: ${JSON.stringify(score.textSeen)}`);
+        if (anthropic) {
+          const score = await scoreImage(anthropic, jpg, c.hook);
+          results[engine.id].push({ ...score, concept: c.concept, hook: c.hook, ms });
+          console.log(
+            `${(ms / 1000).toFixed(0)}s | text ${score.hookExact ? 'OK' : 'WRONG'}` +
+              `${score.extraText ? ' | +extra text' : ''}${score.faceLooksReal ? '' : ' | face not photographic'}`
+          );
+          if (!score.hookExact) console.log(`      saw: ${JSON.stringify(score.textSeen)}`);
+        } else {
+          results[engine.id].push({
+            concept: c.concept, hook: c.hook, ms,
+            textSeen: [], hookExact: false, hookGarbled: false, extraText: false,
+            faceLooksReal: true, note: 'not scored',
+          });
+          console.log(`${(ms / 1000).toFixed(0)}s | saved (unscored)`);
+        }
       } catch (err) {
         const ms = Date.now() - t0;
         const message = err instanceof Error ? err.message : String(err);
@@ -278,8 +306,23 @@ async function main() {
   }
 
   console.log('='.repeat(72));
-  console.log('RESULTS — hook rendered exactly, per engine');
+  console.log(scoring ? 'RESULTS — hook rendered exactly, per engine' : 'RESULTS — timing and cost only (unscored)');
   console.log('='.repeat(72));
+  if (!scoring) {
+    for (const engine of engines) {
+      const done = results[engine.id].filter((r) => !r.failed);
+      const avgSec = done.length ? done.reduce((s, r) => s + r.ms, 0) / done.length / 1000 : 0;
+      console.log(
+        `${engine.label.padEnd(38)} ${done.length}/${results[engine.id].length} generated  ` +
+          `avg ${avgSec.toFixed(0)}s  ~$${(engine.approxCost * done.length).toFixed(2)}`
+      );
+    }
+    console.log(`\nCompare the images side by side in ${OUT_DIR}\\<engine>\\<concept>.jpg`);
+    console.log('For each pair, the question is only: is the hook rendered exactly right?');
+    for (const c of cases) console.log(`  ${c.concept.padEnd(18)} expects: ${c.hook}`);
+    writeFileSync(join(OUT_DIR, 'results.json'), JSON.stringify({ cases, results }, null, 2));
+    return;
+  }
   for (const engine of engines) {
     const rs = results[engine.id];
     const done = rs.filter((r) => !r.failed);
