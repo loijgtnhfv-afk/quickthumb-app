@@ -41,18 +41,21 @@ const STYLE_OPTIONS: {
   src: string | null;
   group: StyleGroup;
   noFaceOk?: boolean;
+  /** Shown in the landing-page gallery. Only the original four, so the section's
+   *  "same face, four different concepts" claim stays literally true. */
+  gallery?: boolean;
   swatch: string;
 }[] = [
-  { key: 'face-surprise', src: '/examples/face-surprise.jpg', group: 'basic', swatch: 'linear-gradient(135deg,#f59e0b,#ef4444)' },
-  { key: 'jp-telop', src: '/examples/jp-telop.jpg', group: 'basic', swatch: 'linear-gradient(135deg,#fde047,#f97316)' },
-  { key: 'global-clean', src: '/examples/global-clean.jpg', group: 'basic', swatch: 'linear-gradient(135deg,#334155,#0f172a)' },
-  { key: 'action', src: '/examples/action.jpg', group: 'basic', swatch: 'linear-gradient(135deg,#dc2626,#7c2d12)' },
-  { key: 'object-spotlight', src: null, group: 'show', noFaceOk: true, swatch: 'linear-gradient(135deg,#0d9488,#155e75)' },
-  { key: 'split-compare', src: null, group: 'show', swatch: 'linear-gradient(90deg,#64748b 50%,#f97316 50%)' },
-  { key: 'risk-warning', src: null, group: 'show', swatch: 'linear-gradient(135deg,#111827,#b91c1c)' },
-  { key: 'calm-authority', src: null, group: 'mood', swatch: 'linear-gradient(135deg,#1e293b,#0b1120)' },
-  { key: 'soft-lifestyle', src: null, group: 'mood', swatch: 'linear-gradient(135deg,#fce7f3,#d6b7a5)' },
-  { key: 'night-cinematic', src: null, group: 'mood', noFaceOk: true, swatch: 'linear-gradient(135deg,#1e3a8a,#020617)' },
+  { key: 'face-surprise', src: '/examples/face-surprise.jpg', group: 'basic', gallery: true, swatch: 'linear-gradient(135deg,#f59e0b,#ef4444)' },
+  { key: 'jp-telop', src: '/examples/jp-telop.jpg', group: 'basic', gallery: true, swatch: 'linear-gradient(135deg,#fde047,#f97316)' },
+  { key: 'global-clean', src: '/examples/global-clean.jpg', group: 'basic', gallery: true, swatch: 'linear-gradient(135deg,#334155,#0f172a)' },
+  { key: 'action', src: '/examples/action.jpg', group: 'basic', gallery: true, swatch: 'linear-gradient(135deg,#dc2626,#7c2d12)' },
+  { key: 'object-spotlight', src: '/examples/object-spotlight.jpg', group: 'show', noFaceOk: true, swatch: 'linear-gradient(135deg,#0d9488,#155e75)' },
+  { key: 'split-compare', src: '/examples/split-compare.jpg', group: 'show', swatch: 'linear-gradient(90deg,#64748b 50%,#f97316 50%)' },
+  { key: 'risk-warning', src: '/examples/risk-warning.jpg', group: 'show', swatch: 'linear-gradient(135deg,#111827,#b91c1c)' },
+  { key: 'calm-authority', src: '/examples/calm-authority.jpg', group: 'mood', swatch: 'linear-gradient(135deg,#1e293b,#0b1120)' },
+  { key: 'soft-lifestyle', src: '/examples/soft-lifestyle.jpg', group: 'mood', swatch: 'linear-gradient(135deg,#fce7f3,#d6b7a5)' },
+  { key: 'night-cinematic', src: '/examples/night-cinematic.jpg', group: 'mood', noFaceOk: true, swatch: 'linear-gradient(135deg,#1e3a8a,#020617)' },
 ];
 
 const ALL_STYLE_KEYS: string[] = ALL_CONCEPT_KEYS;
@@ -71,10 +74,11 @@ const DEFAULT_STYLE_KEYS: string[] = ['face-surprise', 'jp-telop', 'global-clean
 
 const STYLE_GROUP_ORDER: StyleGroup[] = ['basic', 'show', 'mood'];
 
-// Only the four originals have rendered samples, so the landing-page gallery
-// shows those; the picker shows all ten.
+// The landing gallery deliberately stays at the original four rather than
+// growing to ten: the section is a single row sized for four, and its copy
+// promises "four different concepts" from one face. The picker shows all ten.
 const GALLERY_TILES = STYLE_OPTIONS.filter(
-  (s): s is (typeof STYLE_OPTIONS)[number] & { src: string } => s.src !== null
+  (s): s is (typeof STYLE_OPTIONS)[number] & { src: string } => s.gallery === true && s.src !== null
 );
 
 const STYLE_PREF_KEY = 'quickthumb:styles';
