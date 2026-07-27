@@ -1,0 +1,72 @@
+name: Keep Supabase awake
+
+# WHY THIS EXISTS
+# Supabase's free tier auto-pauses a project after ~1 week with no requests.
+# A paused project loses its DNS record entirely, so the browser can't even
+# reach it — every signup/login dies with a bare "Failed to fetch" and the
+# whole app is down while the landing page still renders fine (static).
+# This actually happened on 2026-07-27, on the day the first outside user
+# tried to sign up. Restoring took a dashboard click plus a few minutes for
+# Postgres and GoTrue to come back.
+#
+# So: touch the project every day. One real query is enough to reset the
+# inactivity clock, and if the project is ever down anyway this job fails and
+# GitHub emails the failure — turning a silent outage into a notification.
+
+on:
+  schedule:
+    # Daily at 02:17 UTC = 11:17 JST. Daily (not weekly) because the pause
+    # threshold is ~7 days and GitHub's scheduled runs can be delayed by
+    # hours under load — a weekly ping cuts it far too close.
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+
+# Overlapping runs would be harmless but pointless.
+concurrency:
+  group: keep-supabase-awake
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping Supabase auth + database
+        env:
+          # Both values are already public: they ship to every visitor's
+          # browser as NEXT_PUBLIC_* in the client bundle. The publishable
+          # key is the anon key — it grants only what RLS allows, so it is
+          # NOT a secret and does not belong in GitHub Secrets. The
+          # service-role key (SUPABASE_SECRET_KEY) must never appear here.
+          SUPABASE_URL: https://zzekuirosxmgtqatvapf.supabase.co
+          SUPABASE_PUBLISHABLE_KEY: sb_publishable_gCEFCphlkiqz-ikJhQa1Iw_Hx9ir0H-
+        run: |
+          set -uo pipefail
+          fail=0
+
+          # GoTrue. Answers 200 only once the auth server is really serving.
+          auth=$(curl -sS -o /dev/null -m 30 -w '%{http_code}' \
+            -H "apikey: $SUPABASE_PUBLISHABLE_KEY" \
+            "$SUPABASE_URL/auth/v1/health" || echo 000)
+          echo "auth/v1/health   -> $auth"
+          [ "$auth" = "200" ] || fail=1
+
+          # A REAL query against Postgres through PostgREST — this is what
+          # resets the inactivity clock. RLS returns an empty array for the
+          # anon role, which is fine: the query still hits the database.
+          # Right after a restore this returns 503 (PGRST002, schema cache
+          # still building), which is exactly the kind of half-up state
+          # worth being told about.
+          db=$(curl -sS -o /dev/null -m 30 -w '%{http_code}' \
+            -H "apikey: $SUPABASE_PUBLISHABLE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_PUBLISHABLE_KEY" \
+            "$SUPABASE_URL/rest/v1/profiles?select=id&limit=1" || echo 000)
+          echo "rest/v1/profiles -> $db"
+          [ "$db" = "200" ] || fail=1
+
+          if [ "$fail" = "1" ]; then
+            echo "::error::Supabase is not fully up (auth=$auth db=$db). If these are 000, the project is paused or deleted — check https://supabase.com/dashboard/project/zzekuirosxmgtqatvapf and hit Restore. Signups and logins are broken until it is back."
+            exit 1
+          fi
+
+          echo "Supabase is awake (auth=$auth db=$db)."
