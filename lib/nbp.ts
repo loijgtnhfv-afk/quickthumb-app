@@ -71,6 +71,18 @@ const legible = (hook: string): string => {
   return `The text must read ${phrase}, be large, bold and perfectly legible, and must not overlap or be covered by the hero subject.`;
 };
 
+// The anime concepts are the ONE place where redrawing the person is the point
+// rather than the bug. Everywhere else a stylised face is a defect (it stops
+// being the user's face); here a Vtuber or a streamer is explicitly asking for
+// an illustrated look, so the clause asks for a likeness rather than a
+// photograph — hairstyle and face shape carried over, so the result still reads
+// as them. Kept separate from heroClause() so no photographic concept can
+// accidentally inherit "draw this person".
+const animeHeroClause = (hasFace: boolean): string =>
+  hasFace
+    ? 'Draw the person in the reference image as the large hero anime character, keeping their hairstyle, face shape and overall look clearly recognizable as the same person'
+    : 'Feature one appealing hero anime character closely tied to the topic';
+
 // Keep the hook the only text. Two failure modes seen in testing: (a) NBP
 // invents stray garbled scene labels (a misspelled "ポケモンテーマパーク"), and
 // (b) it renders ALL-CAPS emphasis words from our own prompt as on-image text
@@ -199,6 +211,31 @@ NBP_CONCEPTS.push(
     // prompt is exactly how a literal "EXACTLY" once got baked onto an image.
     build: (hook, topic, hasFace) =>
       `A cinematic 16:9 YouTube thumbnail about ${topic}, in a quiet storytelling style. ${heroClause(hasFace)}, placed large and centred in the lower two-thirds of the frame, clearly lit from the front by a soft warm key light so it stays bright against the dark surroundings, with no heavy shadow falling across it. Dark, deeply out-of-focus night-blue BACKGROUND with drifting haze, a warm rim light behind the hero, a filmic colour grade and deep shadow falloff toward the upper area of the frame; no buildings, no street furniture and no lit scenery, an empty atmospheric field only. Keep the top band of the frame clear for text. Place the text across the top band in a heavy white gothic font with a subtle shadow, on one or two lines. ${legible(hook)} ${NO_EXTRA_TEXT} Quiet, ominous and cinematic.`,
+  },
+  // --- Added 2026-07-27 (second batch): Vtuber / gaming ---
+  // Grounded in the corpus, not a hunch: on the curated SAMUNE gallery, Vtuber
+  // is the third-largest genre (443 of 2,667) and gaming/streaming is another
+  // of the biggest. Both were completely unserved — every other concept is
+  // photographic, and an illustrated-avatar creator has no photo to upload.
+  {
+    key: 'anime-style',
+    lang: 'native',
+    label: 'Anime style',
+    // "anime illustration" leads the sentence on purpose: the same
+    // first-thing-read rule that made `action` come out illustrated when it
+    // shouldn't have is used here to make sure it DOES.
+    build: (hook, topic, hasFace) =>
+      `A polished Japanese anime illustration used as a high-CTR 16:9 YouTube thumbnail about ${topic}. ${animeHeroClause(hasFace)}, drawn with clean confident line art, vivid cel shading, bright expressive eyes and a strong emotional expression, placed on the RIGHT side of the frame. Colourful anime background with soft glowing light, simple speed lines and a few floating sparkle shapes (shapes only, no lettering), kept simple so it never competes with the character; no screens, monitors, interface panels, posters or banners anywhere, since those invite small invented lettering. Keep the LEFT half of the frame clear for text. Place the text on the LEFT in a heavy white gothic font with a thick black outline and a bright accent colour. ${legible(hook)} ${NO_EXTRA_TEXT} Vivid, characterful and instantly readable at small size.`,
+  },
+  {
+    key: 'game-live',
+    lang: 'native',
+    label: 'Game stream',
+    // No HUD, no scoreboard, no minimap, no keycaps: every one of those is a
+    // request for small invented lettering, which is the failure NO_EXTRA_TEXT
+    // exists to stop. The "gaming" read comes from lighting and colour instead.
+    build: (hook, topic, hasFace) =>
+      `A high-CTR 16:9 game-streaming YouTube thumbnail about ${topic}. ${heroClause(hasFace)}, kept PHOTOGRAPHIC and realistic with an excited reacting expression, lit from the side by vivid magenta and cyan light, placed on the RIGHT third of the frame. Dark BACKGROUND with a neon magenta-and-cyan glow, soft light streaks and a subtle grid of glowing dots fading into darkness; no screens, no interface panels, no scoreboards, no maps and no game artwork of any kind — an abstract glowing space only. Keep the LEFT half of the frame clear for text. Place the text on the LEFT in a heavy white gothic font with a thick black outline and a bright cyan edge glow. ${legible(hook)} ${NO_EXTRA_TEXT} Electric, loud and high-energy.`,
   }
 );
 

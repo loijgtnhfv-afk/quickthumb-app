@@ -75,7 +75,8 @@
     "group": {
       "basic": "まずはこれ（定番）",
       "show": "モノ・比較を見せる",
-      "mood": "雰囲気で選ぶ"
+      "mood": "雰囲気で選ぶ",
+      "gaming": "ゲーム・配信向け"
     }
   },
   "caption": {
@@ -113,7 +114,9 @@
     "split-compare": "before / after",
     "risk-warning": "注意をうながす",
     "soft-lifestyle": "やわらか・かわいい",
-    "night-cinematic": "夜・映画っぽい"
+    "night-cinematic": "夜・映画っぽい",
+    "anime-style": "アニメ調",
+    "game-live": "ゲーム配信"
   },
   "conceptUse": {
     "face-surprise": "リアクション・体験談",
@@ -125,7 +128,9 @@
     "split-compare": "比較・変化を見せる",
     "risk-warning": "知らないと損する系",
     "soft-lifestyle": "美容・コスメ・くらし",
-    "night-cinematic": "怖い話・ドキュメンタリー"
+    "night-cinematic": "怖い話・ドキュメンタリー",
+    "anime-style": "Vtuber・アニメ好き向け",
+    "game-live": "ゲーム実況・配信"
   },
   "examples": {
     "heading": "実際の生成例",

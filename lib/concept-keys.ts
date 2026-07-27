@@ -23,6 +23,8 @@ export const CONCEPT_KEYS = [
   'risk-warning',
   'soft-lifestyle',
   'night-cinematic',
+  'anime-style',
+  'game-live',
 ] as const;
 
 export type ConceptKey = (typeof CONCEPT_KEYS)[number];

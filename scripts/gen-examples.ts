@@ -85,6 +85,17 @@ const SAMPLES: Record<string, { topic: string; hook: string }> = {
     topic: 'the night a solo hiker got lost in the mountains',
     hook: 'HE VANISHED',
   },
+  // Vtuber / gaming batch. Topics are picked so the sample reads as belonging
+  // to that world at a glance — a generic topic here would make the tile look
+  // like the photographic ones with a filter on it.
+  'anime-style': {
+    topic: 'a late-night gaming stream with viewers in chat',
+    hook: '初見さん歓迎',
+  },
+  'game-live': {
+    topic: 'a clutch comeback in an online shooter match',
+    hook: '神回きた',
+  },
 };
 
 // Two fictional personas. The samples are what a first-time visitor uses to

@@ -34,7 +34,7 @@ interface Profile {
 // `group` splits ten styles into three scannable sets — a flat grid of ten is
 // where a first-time user stalls. `noFaceOk` marks the ones designed to work
 // with no uploaded photo at all, which the other eight are not.
-type StyleGroup = 'basic' | 'show' | 'mood';
+type StyleGroup = 'basic' | 'show' | 'mood' | 'gaming';
 
 const STYLE_OPTIONS: {
   key: ConceptKey;
@@ -56,6 +56,8 @@ const STYLE_OPTIONS: {
   { key: 'calm-authority', src: '/examples/calm-authority.jpg', group: 'mood', swatch: 'linear-gradient(135deg,#1e293b,#0b1120)' },
   { key: 'soft-lifestyle', src: '/examples/soft-lifestyle.jpg', group: 'mood', swatch: 'linear-gradient(135deg,#fce7f3,#d6b7a5)' },
   { key: 'night-cinematic', src: '/examples/night-cinematic.jpg', group: 'mood', noFaceOk: true, swatch: 'linear-gradient(135deg,#1e3a8a,#020617)' },
+  { key: 'anime-style', src: '/examples/anime-style.jpg', group: 'gaming', noFaceOk: true, swatch: 'linear-gradient(135deg,#f0abfc,#38bdf8)' },
+  { key: 'game-live', src: '/examples/game-live.jpg', group: 'gaming', swatch: 'linear-gradient(135deg,#d946ef,#06b6d4)' },
 ];
 
 const ALL_STYLE_KEYS: string[] = ALL_CONCEPT_KEYS;
@@ -73,7 +75,7 @@ if (process.env.NODE_ENV !== 'production') {
 // default-cost generation is.
 const DEFAULT_STYLE_KEYS: string[] = DEFAULT_CONCEPT_KEYS;
 
-const STYLE_GROUP_ORDER: StyleGroup[] = ['basic', 'show', 'mood'];
+const STYLE_GROUP_ORDER: StyleGroup[] = ['basic', 'show', 'mood', 'gaming'];
 
 // The landing gallery deliberately stays at the original four rather than
 // growing to ten: the section is a single row sized for four, and its copy
@@ -1168,15 +1170,22 @@ export default function Home() {
                             width: '100%',
                             padding: 0,
                             textAlign: 'left',
-                            background: on ? 'rgba(167,139,250,0.16)' : 'rgba(0,0,0,0.25)',
-                            border: on
-                              ? '2px solid #a78bfa'
-                              : '2px solid rgba(255,255,255,0.12)',
+                            background: on ? 'rgba(167,139,250,0.18)' : 'rgba(0,0,0,0.25)',
+                            // Border width is identical in both states so
+                            // selecting never nudges the grid; only the colour
+                            // and the glow change.
+                            border: on ? '3px solid #a78bfa' : '3px solid rgba(255,255,255,0.14)',
+                            // The selected ring is what carries the state now
+                            // that unpicked samples stay in full colour.
+                            boxShadow: on
+                              ? '0 0 0 2px rgba(167,139,250,0.35), 0 6px 18px rgba(167,139,250,0.28)'
+                              : 'none',
                             borderRadius: 12,
                             overflow: 'hidden',
                             color: '#fff',
                             cursor: status === 'loading' ? 'default' : 'pointer',
                             opacity: status === 'loading' ? 0.6 : 1,
+                            transition: 'border-color 0.12s ease, box-shadow 0.12s ease, background 0.12s ease',
                           }}
                         >
                           <div style={{ position: 'relative' }}>
@@ -1194,8 +1203,12 @@ export default function Home() {
                                   display: 'block',
                                   aspectRatio: '16/9',
                                   objectFit: 'cover',
-                                  // Unpicked styles read as "off" at a glance.
-                                  filter: on ? 'none' : 'grayscale(1) brightness(0.55)',
+                                  // Deliberately NO desaturation on unpicked
+                                  // tiles. Greying them out made the styles the
+                                  // user hasn't chosen yet look bad, which is
+                                  // backwards — these samples are the sales
+                                  // pitch for choosing them. Selection state is
+                                  // carried by the ring and the checkbox.
                                 }}
                               />
                             ) : (
@@ -1208,7 +1221,6 @@ export default function Home() {
                                   width: '100%',
                                   aspectRatio: '16/9',
                                   background: s.swatch,
-                                  filter: on ? 'none' : 'grayscale(1) brightness(0.55)',
                                 }}
                               />
                             )}
@@ -1218,18 +1230,21 @@ export default function Home() {
                                 position: 'absolute',
                                 top: 6,
                                 left: 6,
-                                width: 20,
-                                height: 20,
+                                width: 22,
+                                height: 22,
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                fontSize: 13,
+                                fontSize: 14,
                                 fontWeight: 700,
                                 lineHeight: 1,
                                 borderRadius: 6,
                                 color: on ? '#0f0c29' : 'transparent',
-                                background: on ? '#a78bfa' : 'rgba(0,0,0,0.45)',
-                                border: on ? 'none' : '1.5px solid rgba(255,255,255,0.6)',
+                                background: on ? '#a78bfa' : 'rgba(0,0,0,0.5)',
+                                border: on ? 'none' : '2px solid rgba(255,255,255,0.85)',
+                                // Readable over a bright sample now that
+                                // unpicked tiles keep their real colours.
+                                boxShadow: on ? 'none' : '0 1px 4px rgba(0,0,0,0.5)',
                                 boxSizing: 'border-box',
                               }}
                             >
