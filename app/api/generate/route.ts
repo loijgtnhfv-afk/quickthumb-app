@@ -173,6 +173,16 @@ type Reservation =
 // instead of 1. Compare-and-set (update guarded by the value we just read)
 // serializes concurrent callers: they can never oversell `limit`, and we never
 // persist a stale value.
+//
+// KNOWN GAP (accepted, revisit before Stripe goes live): a reservation is a
+// counter bump, not a row. If the Stripe webhook resets image_credits_used to 0
+// for a renewal WHILE a generation is in flight, that generation's charge
+// vanishes with the old cycle and the images effectively land free against the
+// new one. Closing it properly needs a reservations table (or a period stamp
+// compared at completion); the error is bounded by one generation, only fires
+// in the seconds around a renewal event, and errs toward the user, so it is not
+// worth that machinery while billing is still inert. usage_logs records
+// images_charged/credits_after per generation, so it stays auditable.
 async function reserveImageCredits(
   admin: ReturnType<typeof createServiceClient>,
   userId: string,
@@ -201,13 +211,18 @@ async function reserveImageCredits(
         remaining: Math.max(0, limit - used),
       };
     }
-    // CAS: claim only if nobody moved the counter since we read it.
-    // .select() returns the row ONLY when the guarded WHERE matched.
+    // CAS: claim only if NEITHER the counter nor the ceiling moved since we
+    // read them. Guarding the counter alone leaves a hole: the affordability
+    // test above used the limit we read, so a Stripe downgrade landing between
+    // the read and this update would let the claim through against the old,
+    // higher limit and oversell the new one. Including it in the WHERE makes
+    // that case lose the race and re-evaluate against the new limit instead.
     const { data: claimed, error: casErr } = await admin
       .from('profiles')
       .update({ image_credits_used: used + want })
       .eq('id', userId)
       .eq('image_credits_used', used)
+      .eq('image_credits_limit', limit)
       .select('id');
     if (casErr) return { ok: false, status: 500 };
     if (claimed && claimed.length === 1) {
@@ -508,7 +523,19 @@ export async function POST(request: NextRequest) {
     const undelivered = reservation.charged - thumbs.length;
     if (undelivered > 0) {
       await refundImageCredits(admin, user.id, undelivered);
-      creditsUsedAfter -= undelivered;
+      // Re-read rather than subtract locally: a refund is a compare-and-set
+      // that can lose its race, and a concurrent request (or a Stripe renewal
+      // resetting the counter) moves the balance underneath us either way.
+      // Guessing here is what makes the header disagree with the database.
+      const { data: fresh } = await admin
+        .from('profiles')
+        .select('image_credits_used')
+        .eq('id', user.id)
+        .single();
+      creditsUsedAfter =
+        typeof fresh?.image_credits_used === 'number'
+          ? fresh.image_credits_used
+          : creditsUsedAfter - undelivered;
     }
 
     // Credits were charged at reservation time (minus any refund just above),

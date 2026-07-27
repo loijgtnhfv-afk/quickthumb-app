@@ -29,3 +29,23 @@ export type ConceptKey = (typeof CONCEPT_KEYS)[number];
 
 /** Widened copy for the many places that just need `string[]`. */
 export const ALL_CONCEPT_KEYS: string[] = [...CONCEPT_KEYS];
+
+/**
+ * What a request gets when it does not say which styles it wants.
+ *
+ * These four are the set that existed before the picker, and — now that one
+ * credit means one image — they are also what a caller expects to pay. The
+ * server used to fall back to EVERY concept for compatibility with older
+ * clients, which was harmless when a generation cost 1 regardless of image
+ * count. With per-image credits that same fallback silently charges 10 instead
+ * of 4: a browser tab opened before the deploy still posts `{youtube_url}` with
+ * no `concept_keys`, and the user is billed 2.5x for images they never asked
+ * for. Defaulting to the historical four keeps the cost identical to what that
+ * client was built against.
+ */
+export const DEFAULT_CONCEPT_KEYS: string[] = [
+  'face-surprise',
+  'jp-telop',
+  'global-clean',
+  'action',
+];

@@ -20,7 +20,7 @@
  * OPENAI_API_KEY additionally enables the gpt-image-2 column.
  *
  * Cost: ~$0.13/image (nbp) + ~$0.07/image (nb2) + ~$0.004/image to score.
- * The default 6 cases x 2 engines lands around $1.30.
+ * The default 15 cases x 2 engines lands around $3.00.
  */
 import { readFileSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -41,16 +41,29 @@ loadEnv();
 
 const OUT_DIR = join(process.cwd(), '.bakeoff');
 
-// Deliberately weighted toward the cases that break text renderers: mixed
-// kanji+kana, digits inside Japanese, katakana loanwords, and one Latin
-// control. If an engine only wins on the easy ones it hasn't won.
+// Deliberately weighted toward what breaks text renderers, because an engine
+// that only wins on easy strings hasn't won: mixed kanji+kana, digits inside
+// Japanese, digits with a unit, katakana with a long vowel mark, dakuten,
+// small kana, punctuation, and Latin controls. Every one of the ten concepts
+// appears at least once so layout differences show up too.
 const CASES: { concept: string; hook: string; topic: string }[] = [
+  // --- one per concept ---
   { concept: 'face-surprise', hook: 'まさかの結末', topic: 'a surprising 24-hour money-making challenge' },
   { concept: 'jp-telop', hook: '1ヶ月で10万', topic: 'a one-month extreme money-saving challenge' },
   { concept: 'calm-authority', hook: '新NISAの正解', topic: 'how to choose an index fund for long-term investing' },
   { concept: 'risk-warning', hook: '知らないと損', topic: 'common mistakes that cost you money on your phone plan' },
   { concept: 'soft-lifestyle', hook: '時短メイク', topic: 'an everyday five-minute makeup routine' },
   { concept: 'global-clean', hook: 'I QUIT', topic: 'quitting a stable office job to do YouTube full-time' },
+  { concept: 'object-spotlight', hook: '買って正解', topic: 'a hands-on review of a new compact camera' },
+  { concept: 'action', hook: '新記録達成', topic: 'breaking a world-record speedrun in a retro video game' },
+  { concept: 'split-compare', hook: '3日で5kg減', topic: 'a three-day body transformation experiment' },
+  { concept: 'night-cinematic', hook: 'HE VANISHED', topic: 'the night a solo hiker got lost in the mountains' },
+  // --- second pass, harder strings ---
+  { concept: 'face-surprise', hook: 'ぶっちゃけます', topic: 'an honest confession about a failed business' },
+  { concept: 'jp-telop', hook: 'コスパ最強', topic: 'the best value gadgets under 5000 yen' },
+  { concept: 'risk-warning', hook: 'え、まじ？', topic: 'a shocking hidden fee in a popular service' },
+  { concept: 'object-spotlight', hook: 'サブスク解約術', topic: 'how to cancel subscriptions you forgot you had' },
+  { concept: 'calm-authority', hook: '衝撃の真実', topic: 'the truth about long-term savings accounts' },
 ];
 
 // Fictional persona portrait produced by `gen-examples.ts portrait`. Used as
@@ -258,27 +271,30 @@ async function main() {
 
   const anthropic = scoring ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
   mkdirSync(OUT_DIR, { recursive: true });
-  const results: Record<string, (Score & { concept: string; hook: string; ms: number; failed?: string })[]> = {};
+  const results: Record<string, (Score & { idx: number; concept: string; hook: string; ms: number; failed?: string })[]> = {};
 
   for (const engine of engines) {
     results[engine.id] = [];
     mkdirSync(join(OUT_DIR, engine.id), { recursive: true });
-    for (const c of cases) {
+    for (const [idx, c] of cases.entries()) {
+      // Concepts repeat across cases (the same style with a harder string), so
+      // the file name is keyed by case index, not by concept.
+      const slug = `${String(idx + 1).padStart(2, '0')}-${c.concept}`;
       const concept = NBP_CONCEPTS.find((x) => x.key === c.concept);
       if (!concept) {
         console.warn(`  unknown concept ${c.concept} — skipping`);
         continue;
       }
       const prompt = concept.build(c.hook, c.topic, useFace);
-      process.stdout.write(`[${engine.id}] ${c.concept} "${c.hook}" ... `);
+      process.stdout.write(`[${engine.id}] ${slug} "${c.hook}" ... `);
       const t0 = Date.now();
       try {
         const jpg = await engine.generate(prompt, faceRef);
         const ms = Date.now() - t0;
-        writeFileSync(join(OUT_DIR, engine.id, `${c.concept}.jpg`), jpg);
+        writeFileSync(join(OUT_DIR, engine.id, `${slug}.jpg`), jpg);
         if (anthropic) {
           const score = await scoreImage(anthropic, jpg, c.hook);
-          results[engine.id].push({ ...score, concept: c.concept, hook: c.hook, ms });
+          results[engine.id].push({ ...score, idx, concept: c.concept, hook: c.hook, ms });
           console.log(
             `${(ms / 1000).toFixed(0)}s | text ${score.hookExact ? 'OK' : 'WRONG'}` +
               `${score.extraText ? ' | +extra text' : ''}${score.faceLooksReal ? '' : ' | face not photographic'}`
@@ -286,7 +302,7 @@ async function main() {
           if (!score.hookExact) console.log(`      saw: ${JSON.stringify(score.textSeen)}`);
         } else {
           results[engine.id].push({
-            concept: c.concept, hook: c.hook, ms,
+            idx, concept: c.concept, hook: c.hook, ms,
             textSeen: [], hookExact: false, hookGarbled: false, extraText: false,
             faceLooksReal: true, note: 'not scored',
           });
@@ -296,7 +312,7 @@ async function main() {
         const ms = Date.now() - t0;
         const message = err instanceof Error ? err.message : String(err);
         results[engine.id].push({
-          concept: c.concept, hook: c.hook, ms, failed: message,
+          idx, concept: c.concept, hook: c.hook, ms, failed: message,
           textSeen: [], hookExact: false, hookGarbled: true, extraText: false, faceLooksReal: false, note: '',
         });
         console.log(`FAILED (${message.slice(0, 120)})`);
@@ -319,7 +335,7 @@ async function main() {
     }
     console.log(`\nCompare the images side by side in ${OUT_DIR}\\<engine>\\<concept>.jpg`);
     console.log('For each pair, the question is only: is the hook rendered exactly right?');
-    for (const c of cases) console.log(`  ${c.concept.padEnd(18)} expects: ${c.hook}`);
+    for (const [i, c] of cases.entries()) console.log(`  ${String(i+1).padStart(2,"0")}-${c.concept.padEnd(18)} expects: ${c.hook}`);
     writeFileSync(join(OUT_DIR, 'results.json'), JSON.stringify({ cases, results }, null, 2));
     return;
   }
@@ -339,10 +355,10 @@ async function main() {
     );
   }
   console.log('\nPer-case detail:');
-  for (const c of cases) {
+  for (const [i, c] of cases.entries()) {
     const row = engines
       .map((e) => {
-        const r = results[e.id].find((x) => x.concept === c.concept);
+        const r = results[e.id].find((x) => x.idx === i);
         if (!r) return `${e.id}:-`;
         if (r.failed) return `${e.id}:ERR`;
         return `${e.id}:${r.hookExact ? 'OK ' : 'BAD'}`;

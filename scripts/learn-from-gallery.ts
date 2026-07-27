@@ -76,8 +76,13 @@ async function fetchPage(page: number): Promise<{ samples: Sample[]; totalPages:
     console.warn(`  page ${page}: HTTP ${res.status} — skipping`);
     return { samples: [], totalPages: 0 };
   }
-  // WordPress reports the page count for the per_page we asked for.
-  const totalPages = Number(res.headers.get('x-wp-totalpages') ?? 0) || 0;
+  // WordPress reports the page count for the per_page we asked for. Clamped:
+  // this is a number from someone else's server and it decides the size of an
+  // array we allocate, so a hostile or broken header must not be able to ask
+  // for gigabytes. The real corpus is ~27 pages of 100.
+  const MAX_PAGES = 500;
+  const reported = Number(res.headers.get('x-wp-totalpages') ?? 0);
+  const totalPages = Number.isFinite(reported) ? Math.min(Math.max(0, Math.floor(reported)), MAX_PAGES) : 0;
   const posts = (await res.json()) as Post[];
   const samples = posts.flatMap((p) => {
     const imageUrl = p._embedded?.['wp:featuredmedia']?.[0]?.source_url;
@@ -108,17 +113,39 @@ type ImageBlock = {
   source: { type: 'base64'; media_type: 'image/jpeg' | 'image/png' | 'image/webp'; data: string };
 };
 
-/** Fetch image bytes straight into a base64 block. Nothing touches the disk. */
+const MIN_IMAGE_BYTES = 5_000;
+const MAX_IMAGE_BYTES = 5_000_000;
+
+/**
+ * Fetch image bytes straight into a base64 block. Nothing touches the disk.
+ *
+ * Read as a stream and abort the moment the cap is passed, rather than
+ * buffering the whole response and checking afterwards: the size check is
+ * there to protect this process from a hostile or misconfigured server, and a
+ * check that runs only after the bytes are already in memory protects nothing.
+ * Content-Length is checked first when present, but it is a claim by the same
+ * server, so the streaming cap is what actually enforces the limit.
+ */
 async function toImageBlock(url: string): Promise<ImageBlock | null> {
   try {
     const res = await fetch(url, { headers: { 'user-agent': UA }, signal: AbortSignal.timeout(20_000) });
-    if (!res.ok) return null;
+    if (!res.ok || !res.body) return null;
+    const declared = Number(res.headers.get('content-length') ?? 0);
+    if (Number.isFinite(declared) && declared > MAX_IMAGE_BYTES) return null;
     const ct = res.headers.get('content-type') ?? '';
+    if (!ct.startsWith('image/')) return null;
     const media_type = ct.includes('png') ? 'image/png' : ct.includes('webp') ? 'image/webp' : 'image/jpeg';
-    const buf = Buffer.from(await res.arrayBuffer());
+
+    const chunks: Buffer[] = [];
+    let total = 0;
+    for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+      total += chunk.byteLength;
+      if (total > MAX_IMAGE_BYTES) return null; // stop reading; the body is discarded
+      chunks.push(Buffer.from(chunk));
+    }
     // Skip anything implausible as a thumbnail (error pages, 1px trackers).
-    if (buf.byteLength < 5_000 || buf.byteLength > 5_000_000) return null;
-    return { type: 'image', source: { type: 'base64', media_type, data: buf.toString('base64') } };
+    if (total < MIN_IMAGE_BYTES) return null;
+    return { type: 'image', source: { type: 'base64', media_type, data: Buffer.concat(chunks).toString('base64') } };
   } catch {
     return null;
   }
@@ -171,12 +198,34 @@ Reply with ONLY this JSON, no preamble, no code fences:
 // "text"/"texts" must not; "topic" has to pass, while "top" must not;
 // "brightness" has to pass, while "right" must not (the \b handles that one).
 const FORBIDDEN =
-  /\b(texts?|fonts?|typefaces?|typograph\w*|letter(s|ing)?|words?|caption\w*|headlines?|titles?|layouts?|composition\w*|composed?|lefts?|rights?|tops?|bottoms?|corners?|cent(re|er)(ed|ing)?|placed?|placement|position\w*|align\w*|margins?)\b/i;
+  /\b(texts?|fonts?|typefaces?|typograph\w*|letter(s|ing)?|words?|caption\w*|headlines?|titles?|layouts?|composition\w*|composed?|lefts?|rights?|tops?|bottoms?|corners?|cent(re|er)(ed|ing)?|placed?|placement|position\w*|align\w*|margins?|frames?|edges?|sides?|uppers?|lowers?|areas?|zones?|bands?|regions?|quadrants?|thirds?|halves|half|crops?|overlay\w*|arrange\w*|move[sd]?|shift\w*|swap\w*|replace\w*|ignore\w*|instead|instruction\w*|prompt\w*|system|rules?)\b/i;
 
+/**
+ * Last gate before a model-written sentence is appended to a production prompt.
+ *
+ * Everything upstream of this is untrusted: the observations come from a vision
+ * model looking at images on a third-party website, and the synthesis step is a
+ * second model reading those observations. A crafted image caption, or simply a
+ * model going off-script, must not be able to reach the generator.
+ *
+ * The ASCII check is doing most of the work and is deliberately blunt. Valid
+ * clauses are plain English descriptions of colour and light, so anything
+ * outside printable ASCII — fullwidth lookalikes that dodge the word filter
+ * (ｔｅｘｔ), zero-width joiners, RTL overrides, CJK, emoji — is by definition
+ * not one, and rejecting it costs nothing. Unicode-normalising first means a
+ * mixed-script payload collapses to its ASCII form and then trips the word
+ * filter rather than sneaking past it.
+ */
 function sanitize(clause: unknown): string {
   if (typeof clause !== 'string') return '';
-  const s = clause.trim().replace(/\s+/g, ' ');
+  // NFKC folds fullwidth/compatibility forms down to plain ASCII first, so
+  // "ｔｅｘｔ" is tested as "text" rather than passing as an unknown glyph.
+  const s = clause.normalize('NFKC').trim().replace(/\s+/g, ' ');
   if (!s || s.length > 160) return '';
+  if (!/^[\x20-\x7E]+$/.test(s)) return '';
+  // One sentence of guidance. Several sentences, or anything with a newline,
+  // means it stopped being a nudge and started being a script.
+  if ((s.match(/[.!?]/g) ?? []).length > 1) return '';
   if (FORBIDDEN.test(s)) return '';
   return s;
 }
@@ -232,7 +281,12 @@ async function main(): Promise<void> {
       max_tokens: 600,
       messages: [{ role: 'user', content: [...blocks, { type: 'text', text: OBSERVE_PROMPT }] }],
     });
-    const text = msg.content[0]?.type === 'text' ? msg.content[0].text.trim() : '';
+    const raw = msg.content[0]?.type === 'text' ? msg.content[0].text.trim() : '';
+    // Cap what a single batch can contribute before it is quoted into the
+    // synthesis prompt. A vision model describing attacker-influenced images is
+    // untrusted input; a bounded excerpt limits how much of that prompt any one
+    // batch can occupy, and sanitize() still gates whatever comes out the end.
+    const text = raw.slice(0, 1200);
     if (text) {
       observations.push(text);
       console.log(`  batch ${i / BATCH_SIZE + 1}: ${blocks.length} images -> ${text.split('\n').length} notes`);

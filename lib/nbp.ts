@@ -13,7 +13,7 @@
  */
 import Replicate from 'replicate';
 import sharp from 'sharp';
-import { CONCEPT_KEYS, type ConceptKey } from './concept-keys';
+import { CONCEPT_KEYS, DEFAULT_CONCEPT_KEYS, type ConceptKey } from './concept-keys';
 
 export const NBP_MODEL = 'google/nano-banana-pro' as const;
 
@@ -199,14 +199,20 @@ if (process.env.NODE_ENV !== 'production') {
  * image you'd have gotten from that style in a full run.
  *
  * Unknown keys are ignored rather than rejected (an old client, or a stale
- * tab, shouldn't hard-fail). `undefined` means "no preference" → everything,
- * which keeps existing API callers working. An explicit list that resolves to
- * nothing returns [], and the route turns that into a 400 — silently
- * generating all four would charge a quota slot for work nobody asked for.
+ * tab, shouldn't hard-fail). An explicit list that resolves to nothing returns
+ * [], and the route turns that into a 400 — silently generating everything
+ * would charge for work nobody asked for.
+ *
+ * `undefined` means "no preference" → DEFAULT_CONCEPT_KEYS, not everything.
+ * Falling back to every concept was safe when a generation cost 1 credit
+ * whatever it produced; under per-image credits it would bill a caller that
+ * omitted the field for 10 images instead of the 4 it was written against.
  */
 export function selectConcepts(raw: unknown): { concept: NbpConcept; index: number }[] {
   const all = NBP_CONCEPTS.map((concept, index) => ({ concept, index }));
-  if (raw === undefined || raw === null) return all;
+  if (raw === undefined || raw === null) {
+    return all.filter(({ concept }) => DEFAULT_CONCEPT_KEYS.includes(concept.key));
+  }
   if (!Array.isArray(raw)) return [];
   const wanted = new Set(raw.filter((k): k is string => typeof k === 'string'));
   return all.filter(({ concept }) => wanted.has(concept.key));

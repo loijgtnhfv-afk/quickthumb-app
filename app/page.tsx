@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { createClient } from '@/lib/supabase/client';
-import { ALL_CONCEPT_KEYS, type ConceptKey } from '@/lib/concept-keys';
+import { ALL_CONCEPT_KEYS, DEFAULT_CONCEPT_KEYS, type ConceptKey } from '@/lib/concept-keys';
 import type { User } from '@supabase/supabase-js';
 
 type Status = 'idle' | 'loading' | 'success' | 'error';
@@ -68,9 +68,10 @@ if (process.env.NODE_ENV !== 'production') {
   if (untiled.length) console.error(`[picker] no tile for concept(s): ${untiled.join(', ')}`);
 }
 
-// The four that ship selected. Deliberately the original set: it keeps the
-// default cost at 4 images, which is exactly the free allowance.
-const DEFAULT_STYLE_KEYS: string[] = ['face-surprise', 'jp-telop', 'global-clean', 'action'];
+// The four that ship selected. Same list the server falls back to when a
+// request omits concept_keys, so the picker and the API agree on what a
+// default-cost generation is.
+const DEFAULT_STYLE_KEYS: string[] = DEFAULT_CONCEPT_KEYS;
 
 const STYLE_GROUP_ORDER: StyleGroup[] = ['basic', 'show', 'mood'];
 
