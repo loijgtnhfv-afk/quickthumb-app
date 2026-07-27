@@ -1,13 +1,13 @@
 # Quickthumb
 
-AI-powered YouTube thumbnail generator SaaS. Upload your own face + paste a YouTube URL, get 4 finished, click-ready thumbnails (hero + scene + baked-in hook) in ~60 seconds.
+AI-powered YouTube thumbnail generator SaaS. Upload your own face + paste a YouTube URL, pick from 10 styles, and get finished, click-ready thumbnails (hero + scene + baked-in hook) in ~60 seconds. One credit = one image.
 
 ## Status
 
 - **Live**: https://quickthumb.app/ (custom domain went live 2026-06-06 — apex serves production, www 307-redirects to apex; `metadataBase`/OG point at the brand apex. https://quickthumb-app.vercel.app/ still works as the Vercel origin backup. Note: the `app.` subdomain does NOT resolve, but it's unused.)
 - **GitHub**: github.com/loijgtnhfv-afk/quickthumb-app
 - **Vercel**: sano-s-projects1/quickthumb-app
-- **Stage**: Appeal pivot v2 LIVE (2026-06-03) — engine is Nano Banana Pro generating FINISHED thumbnails; the face comes from the user's OWN uploaded photo. Pre-launch (no Stripe yet). Free tier: 1 generation × 4 images (decided 2026-06-06; set `generations_limit` default to 1).
+- **Stage**: Appeal pivot v2 LIVE (2026-06-03) — engine generates FINISHED thumbnails; the face comes from the user's OWN uploaded photo. Pre-launch (no Stripe yet). **Free tier = 4 IMAGE CREDITS** (`image_credits_limit` default 4 — same value as the old 1 generation × 4 images, restated in the new per-image unit on 2026-07-27).
 
 ## Owner
 
@@ -23,7 +23,7 @@ Paste a video URL + optionally upload your own face photo → 4 finished, styled
 2. `fetchVideoMetadata` (YouTube Data API) → title / description / channel.
 3. `analyzeForThumbnail` (Claude Haiku) → an English scene topic + 2-4 word HOOKS in BOTH the title's language AND English (the JP + global localized variants).
 4. **Face source = the user's OWN uploaded photo only** (`POST /api/upload-persona` → Supabase `thumbnails` bucket → public URL). No photo → faceless topical scene. A third party's face is NEVER baked in (legal: consent / right-of-publicity — see project memory).
-5. **Engine = `lib/nbp.ts`** → Replicate `google/nano-banana-2` (Gemini 3.1 Flash Image) since 2026-07-27; override with the `NBP_MODEL` env var to roll back without a deploy. Chosen over `google/nano-banana-pro` by a measured bake-off (`npm run bakeoff`, 15 real JP hooks/engine): JP text 15/15 vs 14/15, ~19s vs ~34s, $0.067 vs $0.134 per image. **The user PICKS which styles to generate** (multi-select, default 4 of 10 — `body.concept_keys`, resolved by `selectConcepts()`; omitting the field still means all of them, for old clients). For each picked concept it builds a prompt that RESERVES a text zone (so the hero never occludes the hook), appends the weekly clause from `lib/gallery-insights.ts`, passes the face photo as `image_input` for identity preservation, generates 16:9 @2K, and pins the result to 1280×720 via sharp. Concepts run in parallel via `Promise.allSettled` (one concept failing — e.g. an NBP safety refusal — doesn't sink the batch), and every image that fails is refunded individually.
+5. **Engine = `lib/nbp.ts`** → Replicate `google/nano-banana-2` (Gemini 3.1 Flash Image) since 2026-07-27; override with the `NBP_MODEL` env var to roll back without a deploy. Chosen over `google/nano-banana-pro` by a measured bake-off (`npm run bakeoff`, 15 real JP hooks/engine): JP text 15/15 vs 14/15, ~19s vs ~34s, $0.067 vs $0.134 per image. **The user PICKS which styles to generate** (multi-select, default 4 of 10 — `body.concept_keys`, resolved by `selectConcepts()`; omitting the field falls back to DEFAULT_CONCEPT_KEYS — the original four — NOT all ten, because under per-image credits an omitted field would silently bill a legacy caller 10 instead of 4). For each picked concept it builds a prompt that RESERVES a text zone (so the hero never occludes the hook), appends the weekly clause from `lib/gallery-insights.ts`, passes the face photo as `image_input` for identity preservation, generates 16:9 @2K, and pins the result to 1280×720 via sharp. Concepts run in parallel via `Promise.allSettled` (one concept failing — e.g. an NBP safety refusal — doesn't sink the batch), and every image that fails is refunded individually.
    - **The 10 styles** live in `lib/concept-keys.ts` (shared, dependency-free, so the client picker and the server prompts cannot drift) with prompts in `lib/nbp.ts`. Originals: face-surprise / jp-telop / global-clean[EN] / action. Added 2026-07-27: object-spotlight / calm-authority / split-compare / risk-warning / soft-lifestyle / night-cinematic[EN]. **APPEND ONLY** — files are named `thumb-{index+1}.png` from a concept's position, so inserting or reordering renames existing slots.
    - Hooks: `analyzeForThumbnail()` asks Haiku for exactly as many hooks as styles were picked, and they're assigned by position WITHIN the selection — so no two thumbnails in a batch carry the same wording.
 6. Upload finished PNGs to Supabase Storage; return `thumbnails[]` (url / image_url / concept_key / prompt). UI renders whatever count survives.
@@ -60,13 +60,15 @@ Paste a video URL + optionally upload your own face photo → 4 finished, styled
 ```
 app/
   page.tsx                  — landing page (i18n via next-intl, EN/JA toggle)
-  api/generate/route.ts     — main API endpoint (POST /api/generate) — CURRENT: Nano Banana Pro engine
+  api/generate/route.ts     — main API endpoint (POST /api/generate) — style selection, per-image credits, partial refunds
   api/upload-persona/route.ts — uploads the user's own face photo (persona) → Supabase, returns URL
   api/locale/route.ts       — sets the NEXT_LOCALE cookie for i18n toggle
   auth/                     — Supabase Auth signup/login pages (i18n)
   layout.tsx                — root layout, server-resolves locale + NextIntlClientProvider
 lib/
-  nbp.ts                    — CURRENT engine: Nano Banana Pro finished-thumbnail generation + NBP_CONCEPTS
+  nbp.ts                    — CURRENT engine (google/nano-banana-2, NBP_MODEL-overridable) + the 10 NBP_CONCEPTS prompts
+  concept-keys.ts           — shared style key list + DEFAULT_CONCEPT_KEYS (client picker and server prompts read the same source)
+  gallery-insights.ts       — weekly per-style clause appended to prompts (written by scripts/learn-from-gallery.ts)
   thumbnail-compose.ts      — LEGACY Satori-based composition + composeQuadGrid + STYLE_KICKERS (unused by /api/generate)
   supabase/
     server.ts               — Supabase clients (createClient + createServiceClient)
