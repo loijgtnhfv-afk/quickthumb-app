@@ -1,7 +1,7 @@
 import { type NextRequest } from 'next/server';
 import type Stripe from 'stripe';
 import { createServiceClient } from '@/lib/supabase/server';
-import { stripe, PRO_GENERATIONS_LIMIT, FREE_GENERATIONS_LIMIT } from '@/lib/stripe';
+import { stripe, PRO_IMAGE_CREDITS, FREE_IMAGE_CREDITS } from '@/lib/stripe';
 
 export const runtime = 'nodejs';
 
@@ -17,7 +17,7 @@ function periodEndIsoOf(sub: Stripe.Subscription): string | null {
 }
 
 // Stripe billing webhook. Verifies the raw body against the signing secret, then
-// flips profiles.plan / generations_limit on the three lifecycle events. Writes
+// flips profiles.plan / image_credits_limit on the three lifecycle events. Writes
 // go through the service-role client (RLS protects billing fields from the anon
 // key) and are idempotent (SET target state, never increment) since Stripe
 // retries and can reorder/duplicate deliveries. INERT until the env vars are set.
@@ -75,8 +75,8 @@ export async function POST(request: NextRequest) {
               stripe_customer_id: customerId,
               stripe_subscription_id: subscriptionId,
               subscription_status: 'active',
-              generations_limit: PRO_GENERATIONS_LIMIT,
-              generations_used: 0,
+              image_credits_limit: PRO_IMAGE_CREDITS,
+              image_credits_used: 0,
               ...(periodEndIso ? { current_period_end: periodEndIso } : {}),
             })
             .eq('id', userId);
@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
           subscription_status: status,
           stripe_subscription_id: sub.id,
           plan: inGrace ? 'pro' : 'free',
-          generations_limit: inGrace ? PRO_GENERATIONS_LIMIT : FREE_GENERATIONS_LIMIT,
+          image_credits_limit: inGrace ? PRO_IMAGE_CREDITS : FREE_IMAGE_CREDITS,
         };
         // Advance the stored period end only on a confirmed-active event and
         // never backward (reordered deliveries), so the renewal comparison stays
@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
         if (trulyActive && periodEndUnix && periodEndUnix * 1000 >= prevEndMs) {
           update.current_period_end = periodEndIso;
         }
-        if (renewed && trulyActive) update.generations_used = 0;
+        if (renewed && trulyActive) update.image_credits_used = 0;
         await admin.from('profiles').update(update).eq('stripe_customer_id', customerId);
         break;
       }
@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
             plan: 'free',
             subscription_status: 'canceled',
             stripe_subscription_id: null,
-            generations_limit: FREE_GENERATIONS_LIMIT,
+            image_credits_limit: FREE_IMAGE_CREDITS,
           })
           .eq('stripe_customer_id', customerId);
         break;

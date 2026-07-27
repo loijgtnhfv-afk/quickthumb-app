@@ -3,6 +3,7 @@ import Replicate from 'replicate';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { generateNbpThumbnail, NBP_CONCEPTS, selectConcepts } from '@/lib/nbp';
+import { galleryClauseFor } from '@/lib/gallery-insights';
 import { extractVideoId, fetchVideoMetadata } from '@/lib/youtube';
 import { isRateLimited } from '@/lib/rate-limit';
 import { PERSONA_BUCKET, isValidPersonaPath } from '@/lib/personas';
@@ -57,8 +58,14 @@ interface ThumbAnalysis {
 async function analyzeForThumbnail(
   title: string,
   channel: string,
-  description: string
+  description: string,
+  // One hook per thumbnail being generated. Asking for a fixed 4 while the
+  // user can now pick up to NBP_CONCEPTS.length styles would make the extra
+  // styles reuse hooks 0..3 — several thumbnails carrying identical wording,
+  // which reads as broken rather than as variety.
+  hookCount: number
 ): Promise<ThumbAnalysis> {
+  const want = Math.max(1, Math.min(hookCount, NBP_CONCEPTS.length));
   if (!process.env.ANTHROPIC_API_KEY) {
     console.warn('ANTHROPIC_API_KEY not set — no hooks/translation, using title fallback');
     return { en: null, hooksNative: [], hooksEn: [] };
@@ -69,21 +76,23 @@ async function analyzeForThumbnail(
     const msg = await anthropic.messages.create(
       {
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 500,
+      // Scales with `want` (up to NBP_CONCEPTS.length hooks in two languages);
+      // 500 was sized for exactly 4 and truncates the JSON past ~6.
+      max_tokens: 300 + want * 70,
       messages: [
         {
           role: 'user',
           content: `You are a YouTube thumbnail expert. From this video metadata, produce JSON with three things:
 (1) "translation": clean ENGLISH for an AI image-generation prompt — {"title": <max 12 words>, "channel": <max 6 words>, "topic": <one visual sentence describing the video's subject/scene, max 20 words>}. Concise, visual, concrete nouns.
-(2) "hooks_native": array of 4 SHORT thumbnail hook phrases in the SAME LANGUAGE as the Title (max 8 characters if Japanese, max 4 words if English). Punchy curiosity/stakes/emotion copy — NOT the literal title. e.g. "まさかの結末","新記録","1日で激変","衝撃の真実".
-(3) "hooks_en": the SAME 4 hooks written in natural punchy ENGLISH (max 4 words each). e.g. "GONE WRONG","I QUIT","$0 to $1M","NEW RECORD".
+(2) "hooks_native": array of ${want} SHORT thumbnail hook phrases in the SAME LANGUAGE as the Title (max 8 characters if Japanese, max 4 words if English). Punchy curiosity/stakes/emotion copy — NOT the literal title. e.g. "まさかの結末","新記録","1日で激変","衝撃の真実". Make all ${want} DIFFERENT from each other — vary the angle (curiosity, stakes, result, warning, emotion), never restate one phrase.
+(3) "hooks_en": the SAME ${want} hooks written in natural punchy ENGLISH (max 4 words each). e.g. "GONE WRONG","I QUIT","$0 to $1M","NEW RECORD".
 
 Title: ${title}
 Channel: ${channel}
 Description (first 400 chars): ${(description || '').slice(0, 400)}
 
-Reply with ONLY this JSON, no preamble, no code fences:
-{"translation":{"title":"...","channel":"...","topic":"..."},"hooks_native":["...","...","...","..."],"hooks_en":["...","...","...","..."]}`,
+Reply with ONLY this JSON, no preamble, no code fences (each hooks array must hold exactly ${want} items):
+{"translation":{"title":"...","channel":"...","topic":"..."},"hooks_native":[${Array(want).fill('"..."').join(',')}],"hooks_en":[${Array(want).fill('"..."').join(',')}]}`,
         },
       ],
       },
@@ -103,10 +112,16 @@ Reply with ONLY this JSON, no preamble, no code fences:
       : null;
     const clean = (arr: unknown, max: number): string[] =>
       Array.isArray(arr)
-        ? arr
-            .map((h: unknown) => String(h ?? '').trim())
-            .filter((h: string) => h.length > 0 && h.length <= max)
-            .slice(0, 4)
+        ? // Dedupe: the model occasionally repeats a phrase when asked for many
+          // hooks, and two thumbnails with the same words is the exact failure
+          // asking for `want` hooks was meant to avoid.
+          [
+            ...new Set(
+              arr
+                .map((h: unknown) => String(h ?? '').trim())
+                .filter((h: string) => h.length > 0 && h.length <= max)
+            ),
+          ].slice(0, want)
         : [];
     return {
       en,
@@ -136,74 +151,104 @@ async function uploadPng(
 }
 
 type Reservation =
-  | { ok: true; plan: string; limit: number; usedBefore: number }
-  | { ok: false; status: 402 | 429 | 500; plan?: string; limit?: number };
+  | { ok: true; plan: string; limit: number; usedBefore: number; charged: number }
+  | {
+      ok: false;
+      status: 402 | 429 | 500;
+      plan?: string;
+      limit?: number;
+      used?: number;
+      remaining?: number;
+    };
 
-// Atomically reserve ONE generation slot BEFORE any paid NBP work. The old flow
-// read generations_used, checked the limit, did ~40s of paid work, then blindly
-// wrote `used + 1` from the stale snapshot — so N concurrent requests all passed
-// the check and each ran 4 × $0.134 NBP images (a TOCTOU money leak), and the
-// races also lost-update the counter. Compare-and-set (update guarded by the
-// value we just read) serializes concurrent callers: only `limit` of them can
-// ever claim a slot, and we never persist a stale value.
-async function reserveGenerationSlot(
+// Atomically reserve `want` IMAGE CREDITS before any paid NBP work. The quota
+// unit is one generated image: picking 1 of the styles costs 1, picking all of
+// them costs NBP_CONCEPTS.length.
+//
+// The old flow read the counter, checked the limit, did ~40s of paid work, then
+// blindly wrote back from the stale snapshot — so N concurrent requests all
+// passed the check and each ran paid NBP images (a TOCTOU money leak), and the
+// races also lost-update the counter. Per-image credits only sharpen that: a
+// stale read now leaks up to NBP_CONCEPTS.length credits per racing request
+// instead of 1. Compare-and-set (update guarded by the value we just read)
+// serializes concurrent callers: they can never oversell `limit`, and we never
+// persist a stale value.
+async function reserveImageCredits(
   admin: ReturnType<typeof createServiceClient>,
-  userId: string
+  userId: string,
+  want: number
 ): Promise<Reservation> {
   for (let attempt = 0; attempt < 6; attempt++) {
     const { data: profile, error } = await admin
       .from('profiles')
-      .select('plan, generations_used, generations_limit')
+      .select('plan, image_credits_used, image_credits_limit')
       .eq('id', userId)
       .single();
     if (error || !profile) return { ok: false, status: 500 };
-    const used = profile.generations_used as number;
-    const limit = profile.generations_limit as number;
-    if (used >= limit) return { ok: false, status: 402, plan: profile.plan as string, limit };
-    // CAS: claim the slot only if nobody moved generations_used since we read it.
+    const used = profile.image_credits_used as number;
+    const limit = profile.image_credits_limit as number;
+    // Affordability is re-tested on EVERY re-read, not once before the loop: a
+    // concurrent request may have taken the headroom we saw. Partial fulfilment
+    // is deliberately not offered — silently trimming a 4-style request down to
+    // the 2 they can afford would deliver something they didn't ask for.
+    if (used + want > limit) {
+      return {
+        ok: false,
+        status: 402,
+        plan: profile.plan as string,
+        limit,
+        used,
+        remaining: Math.max(0, limit - used),
+      };
+    }
+    // CAS: claim only if nobody moved the counter since we read it.
     // .select() returns the row ONLY when the guarded WHERE matched.
     const { data: claimed, error: casErr } = await admin
       .from('profiles')
-      .update({ generations_used: used + 1 })
+      .update({ image_credits_used: used + want })
       .eq('id', userId)
-      .eq('generations_used', used)
+      .eq('image_credits_used', used)
       .select('id');
     if (casErr) return { ok: false, status: 500 };
     if (claimed && claimed.length === 1) {
-      return { ok: true, plan: profile.plan as string, limit, usedBefore: used };
+      return { ok: true, plan: profile.plan as string, limit, usedBefore: used, charged: want };
     }
     // Lost the race to a concurrent request — re-read and try again.
   }
   return { ok: false, status: 429 };
 }
 
-// Give a reserved slot back (best effort) when a generation produced nothing, so
-// a transient total failure doesn't burn the user's quota. Guarded CAS so it can
-// never over-credit under concurrency; never throws.
-async function refundGenerationSlot(
+// Give `n` reserved credits back (best effort) for images that were charged but
+// never delivered — a total failure, or the 1 missing image when 4 were asked
+// for and 3 came back. Guarded CAS so it can never over-credit under
+// concurrency, clamped at 0 so a concurrent Stripe renewal reset can't push the
+// counter negative; never throws.
+async function refundImageCredits(
   admin: ReturnType<typeof createServiceClient>,
-  userId: string
+  userId: string,
+  n: number
 ): Promise<void> {
+  if (n <= 0) return;
   try {
     for (let attempt = 0; attempt < 4; attempt++) {
       const { data: profile, error } = await admin
         .from('profiles')
-        .select('generations_used')
+        .select('image_credits_used')
         .eq('id', userId)
         .single();
       if (error || !profile) return;
-      const used = profile.generations_used as number;
+      const used = profile.image_credits_used as number;
       if (used <= 0) return;
       const { data: claimed } = await admin
         .from('profiles')
-        .update({ generations_used: used - 1 })
+        .update({ image_credits_used: Math.max(0, used - n) })
         .eq('id', userId)
-        .eq('generations_used', used)
+        .eq('image_credits_used', used)
         .select('id');
       if (claimed && claimed.length === 1) return;
     }
   } catch (e) {
-    console.warn('refundGenerationSlot failed (non-fatal):', e);
+    console.warn('refundImageCredits failed (non-fatal):', e);
   }
 }
 
@@ -242,6 +287,8 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    // One image = one credit, so the style count IS the price of this request.
+    const wantedImages = selected.length;
 
     // SECURITY / CONSENT: only accept a persona PATH inside THIS user's own
     // namespace in the private personas bucket. The UI gets this path from
@@ -261,18 +308,26 @@ export async function POST(request: NextRequest) {
 
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('plan, generations_used, generations_limit')
+      .select('plan, image_credits_used, image_credits_limit')
       .eq('id', user.id)
       .single();
     if (profileError || !profile) {
       return NextResponse.json({ error: 'Profile not found', code: 'server' }, { status: 500 });
     }
-    if (profile.generations_used >= profile.generations_limit) {
+    // Fast reject before the paid metadata/Haiku calls. The authoritative check
+    // is the atomic reservation further down; this one just avoids spending on a
+    // request that plainly can't be afforded.
+    const remainingNow = Math.max(0, profile.image_credits_limit - profile.image_credits_used);
+    if (remainingNow < wantedImages) {
       return NextResponse.json(
         {
-          error: 'Generation limit reached',
+          error: 'Not enough image credits',
+          code: remainingNow === 0 ? 'out_of_credits' : 'insufficient_credits',
           plan: profile.plan,
-          limit: profile.generations_limit,
+          limit: profile.image_credits_limit,
+          used: profile.image_credits_used,
+          remaining: remainingNow,
+          requested: wantedImages,
         },
         { status: 402 }
       );
@@ -281,15 +336,21 @@ export async function POST(request: NextRequest) {
     const admin = createServiceClient();
 
     // Abuse brake (no extra infra): cap generation ATTEMPTS per user/hour, BEFORE
-    // any paid metadata/Haiku/NBP work. The quota alone doesn't cap spend because
-    // a failed generation refunds its slot — so an attacker could force failures
-    // and burn paid NBP work indefinitely; this bounds that.
+    // any paid metadata/Haiku/NBP work. Credits alone don't cap spend because
+    // failed images are refunded — so an attacker could force failures and burn
+    // paid NBP work indefinitely; this bounds that.
+    //
+    // The cap counts attempts, not images, so per-image credits made each
+    // attempt worth up to NBP_CONCEPTS.length images instead of 4 — the worst
+    // case behind this brake grew ~2.5x. Lowered 20 -> 12 to hold the ceiling
+    // roughly where it was (12 x 10 x $0.134 ≈ $16/hour/user, and only for a
+    // user deliberately forcing failures).
     if (
       await isRateLimited(admin, {
         table: 'generations',
         userId: user.id,
         windowMs: 3_600_000,
-        max: 20,
+        max: 12,
       })
     ) {
       return NextResponse.json(
@@ -302,7 +363,8 @@ export async function POST(request: NextRequest) {
     const { en, hooksNative, hooksEn } = await analyzeForThumbnail(
       meta.title,
       meta.channelTitle,
-      meta.description
+      meta.description,
+      selected.length
     );
     // Scene topic for NBP: prefer the English translation (cleaner grounding),
     // else the raw title (NBP handles CJK fine).
@@ -337,20 +399,36 @@ export async function POST(request: NextRequest) {
       if (concept.lang === 'en') return hooksEn[i % Math.max(1, hooksEn.length)] || fbEn;
       return hooksNative[i % Math.max(1, hooksNative.length)] || fbNative;
     };
-    // Hook index = the concept's ORIGINAL position, so a style gets the same
-    // hook whether it was generated alone or alongside the other three.
-    const prompts = selected.map(({ concept, index }) =>
-      concept.build(hookFor(concept, index), topic, hasFace)
+    // Hook index counts within THIS selection, so N picked styles consume
+    // hooks 0..N-1 and every thumbnail in the batch carries different wording.
+    // (Indexing by the concept's original position instead would leave holes —
+    // picking styles 0, 5 and 9 out of 10 would read hooks 5 and 9 from a
+    // 3-item array and fall back to the same title text twice.)
+    // The gallery clause is appended, never interpolated into the concept's own
+    // wording: the layout, text zone and anti-invented-text rules in that string
+    // are validated, and a weekly-refreshed sentence must be able to tint the
+    // look without being able to move the text.
+    const prompts = selected.map(({ concept }, i) =>
+      concept.build(hookFor(concept, i), topic, hasFace) + galleryClauseFor(concept.key)
     );
 
-    // Atomically charge the quota slot now, immediately before the paid NBP work
-    // (after the cheap metadata/Haiku calls so an invalid URL never costs a slot).
-    // This is the real gate — the early read above is just a fast reject.
-    const reservation = await reserveGenerationSlot(admin, user.id);
+    // Atomically charge one credit per requested image now, immediately before
+    // the paid NBP work (after the cheap metadata/Haiku calls so an invalid URL
+    // never costs credits). This is the real gate — the early read above is just
+    // a fast reject.
+    const reservation = await reserveImageCredits(admin, user.id, wantedImages);
     if (!reservation.ok) {
       if (reservation.status === 402) {
         return NextResponse.json(
-          { error: 'Generation limit reached', plan: reservation.plan, limit: reservation.limit },
+          {
+            error: 'Not enough image credits',
+            code: reservation.remaining === 0 ? 'out_of_credits' : 'insufficient_credits',
+            plan: reservation.plan,
+            limit: reservation.limit,
+            used: reservation.used,
+            remaining: reservation.remaining,
+            requested: wantedImages,
+          },
           { status: 402 }
         );
       }
@@ -362,7 +440,9 @@ export async function POST(request: NextRequest) {
       }
       return NextResponse.json({ error: 'Could not start generation', code: 'server' }, { status: 500 });
     }
-    const generationsUsedAfter = reservation.usedBefore + 1;
+    // Mutable: every undelivered image is refunded below and subtracted here, so
+    // the number the client renders matches what was actually charged.
+    let creditsUsedAfter = reservation.usedBefore + reservation.charged;
 
     const { data: insertRow, error: insertError } = await admin
       .from('generations')
@@ -379,7 +459,7 @@ export async function POST(request: NextRequest) {
       .select('id')
       .single();
     if (insertError || !insertRow) {
-      await refundGenerationSlot(admin, user.id); // nothing generated yet
+      await refundImageCredits(admin, user.id, reservation.charged); // nothing generated yet
       return NextResponse.json({ error: 'Failed to record generation', code: 'server' }, { status: 500 });
     }
     const generationId = insertRow.id as string;
@@ -414,14 +494,25 @@ export async function POST(request: NextRequest) {
             genError instanceof Error ? genError.message : 'Generation failed',
         })
         .eq('id', generationId);
-      // Nothing was produced — give the reserved slot back so a transient failure
-      // doesn't cost the user a generation.
-      await refundGenerationSlot(admin, user.id);
+      // Nothing was produced — give the whole reservation back so a transient
+      // failure doesn't cost the user anything.
+      await refundImageCredits(admin, user.id, reservation.charged);
       console.error('generate: all concepts failed', genError);
       return NextResponse.json({ error: 'Generation failed, please try again.', code: 'gen_failed' }, { status: 500 });
     }
 
-    // Quota was already charged at reservation time, so no increment here.
+    // PARTIAL failure: charged for `charged` images, delivered `thumbs.length`.
+    // Refund the difference. Reached only when at least one image survived —
+    // the zero case throws above and refunds the full reservation, so the two
+    // paths can never both fire.
+    const undelivered = reservation.charged - thumbs.length;
+    if (undelivered > 0) {
+      await refundImageCredits(admin, user.id, undelivered);
+      creditsUsedAfter -= undelivered;
+    }
+
+    // Credits were charged at reservation time (minus any refund just above),
+    // so there is no increment here.
     const { error: completeErr } = await admin
       .from('generations')
       .update({ status: 'completed', thumbnail_urls: thumbs.map((t) => t.url) })
@@ -441,6 +532,11 @@ export async function POST(request: NextRequest) {
         // actually pick, and which ones keep failing" answerable later.
         concepts: selected.map(({ concept }) => concept.key),
         concepts_delivered: thumbs.map((t) => t.conceptKey),
+        // Billing audit trail. Without it, a "why was I charged 4?" question
+        // after a partial failure has no answer anywhere in the system.
+        images_charged: reservation.charged,
+        images_refunded: undelivered,
+        credits_after: creditsUsedAfter,
       },
     });
     if (logErr) console.error('generate: failed to write usage log', logErr);
@@ -456,7 +552,13 @@ export async function POST(request: NextRequest) {
         concept_key: t.conceptKey,
         prompt: t.label,
       })),
-      generations_used: generationsUsedAfter,
+      image_credits_used: creditsUsedAfter,
+      image_credits_limit: reservation.limit,
+      images_charged: thumbs.length,
+      // Transition safety, remove after one release: a browser tab still
+      // running the pre-deploy bundle reads these two keys and would render
+      // "remaining NaN" without them.
+      generations_used: creditsUsedAfter,
       generations_limit: reservation.limit,
     });
   } catch (err) {

@@ -10,6 +10,7 @@
     "verify:fit": "tsx scripts/verify-fit.ts",
     "verify:persona-path": "tsx scripts/verify-persona-path.ts",
     "verify:prod-env": "tsx scripts/verify-prod-env.ts",
+    "learn-gallery": "tsx scripts/learn-from-gallery.ts",
     "extract-descriptors": "tsx scripts/extract-style-descriptors.ts",
     "collect-trending": "tsx scripts/collect-trending-thumbs.ts",
     "refresh-references": "npm run collect-trending && npm run extract-descriptors"

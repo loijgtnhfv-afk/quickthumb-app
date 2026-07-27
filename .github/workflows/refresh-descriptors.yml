@@ -1,11 +1,21 @@
-name: Refresh style descriptors from trending YouTube thumbs
+name: Refresh style descriptors from trending YouTube thumbs (RETIRED)
+
+# RETIRED 2026-07-27 — schedule removed, kept runnable by hand only.
+#
+# This job fed references/descriptors.json, which was read by the Flux + Satori
+# pipeline's descriptorClauseFor(). That pipeline was replaced by Nano Banana
+# Pro on 2026-06-03 and the consumer went with it, so for ~8 weeks this ran
+# every Monday, spent a YouTube quota and a Claude Vision call, committed a
+# file, and changed nothing about the product.
+#
+# Its replacement is learn-from-gallery.yml, whose output IS read on every
+# generation (lib/gallery-insights.ts -> app/api/generate/route.ts).
+#
+# Left in place rather than deleted because the collect/extract scripts are
+# still useful for one-off reference work; run it from the Actions tab if you
+# ever want descriptors.json refreshed again.
 
 on:
-  schedule:
-    # Mondays 02:00 UTC = Mondays 11:00 JST. Weekly is enough — trending
-    # corpus + Vision call together cost ~$0.10/run and trends don't
-    # shift dramatically day-to-day.
-    - cron: '0 2 * * 1'
   workflow_dispatch:
 
 # We push the updated descriptors.json back to the repo, so the workflow

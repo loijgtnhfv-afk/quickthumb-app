@@ -1,0 +1,8 @@
+{
+  "generated_at": null,
+  "source": "thumbnail-gallery.net (SAMUNE)",
+  "sampled": 0,
+  "note": "Populated weekly by `npm run learn-gallery` (see .github/workflows/learn-from-gallery.yml). Empty is valid and means every concept prompt is used exactly as written in lib/nbp.ts.",
+  "observations": [],
+  "byConcept": {}
+}

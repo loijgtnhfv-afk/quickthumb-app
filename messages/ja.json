@@ -28,7 +28,8 @@
     "submitting": "生成中...",
     "errorEmpty": "YouTubeのURLを入力してください。",
     "errorInvalid": "YouTubeのURLとして認識できませんでした。例: https://youtube.com/watch?v=...",
-    "errorOverLimit": "無料枠の{limit}回を使い切りました。Proにアップグレードで上限アップ。",
+    "errorOverLimit": "無料枠の{limit}枚を使い切りました。Proにアップグレードで上限アップ。",
+    "errorNotEnough": "残り{remaining}枚です。{requested}枚を選んでいるので、スタイルを減らすか、Proにアップグレードしてください。",
     "errorNetwork": "通信エラーが発生しました。もう一度お試しください。",
     "errorBusy": "リクエストが集中しています。少し待ってからもう一度お試しください。",
     "errorVideoNotFound": "その動画が見つかりませんでした（非公開または削除された可能性があります）。",
@@ -67,7 +68,15 @@
     "label": "作るスタイル",
     "hint": " · 複数選べます",
     "count": "{count}枚つくる",
-    "none": "スタイルを1つ以上選んでください。"
+    "none": "スタイルを1つ以上選んでください。",
+    "more": "ほかのスタイルも見る（+{count}種）",
+    "moreNoFace": " · 顔写真なしでOKなスタイルもあります",
+    "noFaceOk": "顔写真なしOK",
+    "group": {
+      "basic": "まずはこれ（定番）",
+      "show": "モノ・比較を見せる",
+      "mood": "雰囲気で選ぶ"
+    }
   },
   "caption": {
     "label": "字幕（任意）",
@@ -98,7 +107,25 @@
     "face-surprise": "驚き顔",
     "jp-telop": "テロップ強調",
     "global-clean": "海外向けクリーン",
-    "action": "アクション"
+    "action": "アクション",
+    "object-spotlight": "モノが主役",
+    "calm-authority": "落ち着いた信頼感",
+    "split-compare": "before / after",
+    "risk-warning": "注意をうながす",
+    "soft-lifestyle": "やわらか・かわいい",
+    "night-cinematic": "夜・映画っぽい"
+  },
+  "conceptUse": {
+    "face-surprise": "リアクション・体験談",
+    "jp-telop": "解説・情報系",
+    "global-clean": "海外向け・英語",
+    "action": "ゲーム・チャレンジ",
+    "object-spotlight": "レビュー・購入品・料理",
+    "calm-authority": "ビジネス・投資・専門解説",
+    "split-compare": "比較・変化を見せる",
+    "risk-warning": "知らないと損する系",
+    "soft-lifestyle": "美容・コスメ・くらし",
+    "night-cinematic": "怖い話・ドキュメンタリー"
   },
   "examples": {
     "heading": "実際の生成例",

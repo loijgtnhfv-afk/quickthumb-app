@@ -12,16 +12,22 @@ export const stripe: Stripe | null = process.env.STRIPE_SECRET_KEY
 // price_... id of the monthly Pro plan (created in the Stripe Dashboard).
 export const STRIPE_PRICE_ID = process.env.NEXT_PUBLIC_STRIPE_PRICE_ID || '';
 
-// Generations granted to a Pro subscriber per billing period. PHASE2.md
-// recommends 20 on standard NBP pricing (~40% gross margin); override via env.
-export const PRO_GENERATIONS_LIMIT = Number(process.env.STRIPE_PRO_GENERATIONS_LIMIT) || 20;
+// IMAGES granted to a Pro subscriber per billing period. The quota unit is one
+// generated image, not one generation — a user picking 1 of the 10 styles is
+// charged 1, picking all 10 is charged 10. PHASE2.md recommended 20 generations
+// on standard NBP pricing (~40% gross margin), which is 80 images.
+//
+// The env var is deliberately a NEW name. Reusing STRIPE_PRO_GENERATIONS_LIMIT
+// would read a stale `20` already sitting in Vercel and silently grant Pro
+// subscribers 20 images instead of 80 — a 4x under-delivery on a paid plan.
+export const PRO_IMAGE_CREDITS = Number(process.env.STRIPE_PRO_IMAGE_CREDITS) || 80;
 
-// Limit restored on downgrade — MUST match the app's free-tier default, which
-// was DECIDED 2026-06-06 = 1 generation (x4 images). Keep this in sync with the
-// `profiles.generations_limit` column default; if they disagree, a Stripe
-// free-downgrade event would silently reset users to the wrong number. Override
-// via env if the free tier ever changes.
-export const FREE_GENERATIONS_LIMIT = Number(process.env.FREE_GENERATIONS_LIMIT) || 1;
+// Credits restored on downgrade — MUST match the app's free-tier default, which
+// was DECIDED 2026-06-06 as 1 generation x 4 images = 4 images. Keep this in
+// sync with the `profiles.image_credits_limit` column default; if they
+// disagree, a Stripe free-downgrade event would silently reset users to the
+// wrong number. Override via env if the free tier ever changes.
+export const FREE_IMAGE_CREDITS = Number(process.env.FREE_IMAGE_CREDITS) || 4;
 
 // Gate for STARTING a checkout. Requires the secret key, a price id, AND the
 // webhook signing secret — because fulfillment (plan upgrade, quota grant)

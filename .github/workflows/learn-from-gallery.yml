@@ -1,0 +1,62 @@
+name: Learn from the thumbnail gallery
+
+# Weekly design-trend loop. Samples curated Japanese YouTube thumbnails from
+# thumbnail-gallery.net (SAMUNE), asks Claude Vision what is visually working,
+# and commits one short clause per style to references/gallery-insights.json —
+# which lib/gallery-insights.ts appends to the generation prompts at runtime.
+#
+# This REPLACES refresh-descriptors.yml, which kept running weekly and kept
+# costing money after the 2026-06-03 engine pivot deleted the only code that
+# read its output. The lesson is baked into the design here: the artifact this
+# job writes is consumed by app/api/generate/route.ts on every generation, so
+# if the loop ever goes stale it shows up in the product rather than in silence.
+#
+# Images are never stored — only the written observations. See the copyright
+# note at the top of scripts/learn-from-gallery.ts.
+
+on:
+  schedule:
+    # Mondays 03:00 UTC = Mondays 12:00 JST. The gallery only adds ~6-7
+    # thumbnails a week, so anything more frequent would re-read the same set.
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: learn-from-gallery
+  cancel-in-progress: false
+
+jobs:
+  learn:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install deps
+        run: npm ci || npm install
+
+      - name: Sample the gallery and refresh the guidance
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: npm run learn-gallery
+
+      - name: Commit gallery-insights.json if changed
+        run: |
+          git config user.name "quickthumb-bot"
+          git config user.email "quickthumb-bot@users.noreply.github.com"
+          if git diff --quiet -- references/gallery-insights.json; then
+            echo "No change in this week's guidance — nothing to commit."
+            exit 0
+          fi
+          git add references/gallery-insights.json
+          git commit -m "chore: refresh thumbnail guidance from this week's gallery sample"
+          git push

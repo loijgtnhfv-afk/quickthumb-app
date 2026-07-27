@@ -28,7 +28,8 @@
     "submitting": "Generating...",
     "errorEmpty": "Please paste a YouTube URL.",
     "errorInvalid": "That doesn’t look like a valid YouTube URL. Try https://youtube.com/watch?v=...",
-    "errorOverLimit": "You’ve used all {limit} free generations. Upgrade to Pro for more.",
+    "errorOverLimit": "You’ve used all {limit} free images. Upgrade to Pro for more.",
+    "errorNotEnough": "You have {remaining} images left but picked {requested} styles. Pick fewer, or upgrade to Pro.",
     "errorNetwork": "Network error. Please try again.",
     "errorBusy": "Too many requests at once. Please wait a moment and try again.",
     "errorVideoNotFound": "We couldn’t find that video — it may be private or deleted.",
@@ -67,7 +68,15 @@
     "label": "Styles to generate",
     "hint": " · pick one or more",
     "count": "{count, plural, =1 {1 thumbnail} other {# thumbnails}}",
-    "none": "Pick at least one style."
+    "none": "Pick at least one style.",
+    "more": "Show more styles (+{count})",
+    "moreNoFace": " · includes styles that need no photo",
+    "noFaceOk": "No photo needed",
+    "group": {
+      "basic": "Start here",
+      "show": "Show a thing or a change",
+      "mood": "Pick by mood"
+    }
   },
   "caption": {
     "label": "Caption (optional)",
@@ -98,7 +107,25 @@
     "face-surprise": "Shocked face",
     "jp-telop": "Bold telop",
     "global-clean": "Clean · global",
-    "action": "Action energy"
+    "action": "Action energy",
+    "object-spotlight": "Object spotlight",
+    "calm-authority": "Calm & trusted",
+    "split-compare": "Before & after",
+    "risk-warning": "Warning",
+    "soft-lifestyle": "Soft & cute",
+    "night-cinematic": "Cinematic night"
+  },
+  "conceptUse": {
+    "face-surprise": "Reactions, personal stories",
+    "jp-telop": "Explainers, how-to",
+    "global-clean": "Global / English",
+    "action": "Gaming, challenges",
+    "object-spotlight": "Reviews, hauls, food",
+    "calm-authority": "Business, finance, expert",
+    "split-compare": "Comparisons, transformations",
+    "risk-warning": "Mistakes to avoid",
+    "soft-lifestyle": "Beauty, lifestyle",
+    "night-cinematic": "True crime, documentary"
   },
   "examples": {
     "heading": "What you actually get",

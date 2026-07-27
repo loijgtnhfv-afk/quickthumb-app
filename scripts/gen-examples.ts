@@ -59,6 +59,34 @@ const SAMPLES: Record<string, { topic: string; hook: string }> = {
     topic: 'breaking a world-record speedrun in a retro video game',
     hook: '新記録達成',
   },
+  // Added 2026-07-27 with the six new concepts. Each topic is chosen to suit
+  // the style it demonstrates — a sample that fights its own concept (a calm
+  // premium layout showing a speedrun) sells the style badly in the picker.
+  // Hooks stay short and use common kanji, same garble-avoidance logic as above.
+  'object-spotlight': {
+    topic: 'a hands-on review of a new compact camera',
+    hook: '買って正解',
+  },
+  'calm-authority': {
+    topic: 'how to choose an index fund for long-term investing',
+    hook: '新NISAの正解',
+  },
+  'split-compare': {
+    topic: 'a one-month room decluttering transformation',
+    hook: '1ヶ月の変化',
+  },
+  'risk-warning': {
+    topic: 'common mistakes that cost you money on your phone plan',
+    hook: '知らないと損',
+  },
+  'soft-lifestyle': {
+    topic: 'an everyday five-minute makeup routine',
+    hook: '時短メイク',
+  },
+  'night-cinematic': {
+    topic: 'the night a solo hiker got lost in the mountains',
+    hook: 'HE VANISHED',
+  },
 };
 
 const PORTRAIT_PROMPT =

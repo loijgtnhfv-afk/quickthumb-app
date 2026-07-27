@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { createClient } from '@/lib/supabase/client';
+import { ALL_CONCEPT_KEYS, type ConceptKey } from '@/lib/concept-keys';
 import type { User } from '@supabase/supabase-js';
 
 type Status = 'idle' | 'loading' | 'success' | 'error';
@@ -17,26 +18,66 @@ interface Thumbnail {
 
 interface Profile {
   plan: 'free' | 'pro';
-  generations_used: number;
-  generations_limit: number;
+  image_credits_used: number;
+  image_credits_limit: number;
 }
 
-// The four styles, in the same order as NBP_CONCEPTS in lib/nbp.ts (the API
-// returns them in that order). Used for BOTH the landing-page gallery and the
-// style picker — one list so a style can never appear in one and not the other.
+// Picker metadata for every style in lib/concept-keys.ts. The keys themselves
+// come from that shared module so this list can never drift from the prompts.
 //
 // `src` is real, unedited output of the production pipeline (generated via
 // scripts/gen-examples.ts). The face in the samples is an AI-created FICTIONAL
 // persona — never a real person — so they are publishable without likeness
-// concerns.
-const STYLE_OPTIONS = [
-  { key: 'face-surprise', src: '/examples/face-surprise.jpg' },
-  { key: 'jp-telop', src: '/examples/jp-telop.jpg' },
-  { key: 'global-clean', src: '/examples/global-clean.jpg' },
-  { key: 'action', src: '/examples/action.jpg' },
-] as const;
+// concerns. `src: null` means the sample hasn't been rendered yet; the tile
+// falls back to a coloured swatch rather than a broken image.
+//
+// `group` splits ten styles into three scannable sets — a flat grid of ten is
+// where a first-time user stalls. `noFaceOk` marks the ones designed to work
+// with no uploaded photo at all, which the other eight are not.
+type StyleGroup = 'basic' | 'show' | 'mood';
 
-const ALL_STYLE_KEYS: string[] = STYLE_OPTIONS.map((s) => s.key);
+const STYLE_OPTIONS: {
+  key: ConceptKey;
+  src: string | null;
+  group: StyleGroup;
+  noFaceOk?: boolean;
+  swatch: string;
+}[] = [
+  { key: 'face-surprise', src: '/examples/face-surprise.jpg', group: 'basic', swatch: 'linear-gradient(135deg,#f59e0b,#ef4444)' },
+  { key: 'jp-telop', src: '/examples/jp-telop.jpg', group: 'basic', swatch: 'linear-gradient(135deg,#fde047,#f97316)' },
+  { key: 'global-clean', src: '/examples/global-clean.jpg', group: 'basic', swatch: 'linear-gradient(135deg,#334155,#0f172a)' },
+  { key: 'action', src: '/examples/action.jpg', group: 'basic', swatch: 'linear-gradient(135deg,#dc2626,#7c2d12)' },
+  { key: 'object-spotlight', src: null, group: 'show', noFaceOk: true, swatch: 'linear-gradient(135deg,#0d9488,#155e75)' },
+  { key: 'split-compare', src: null, group: 'show', swatch: 'linear-gradient(90deg,#64748b 50%,#f97316 50%)' },
+  { key: 'risk-warning', src: null, group: 'show', swatch: 'linear-gradient(135deg,#111827,#b91c1c)' },
+  { key: 'calm-authority', src: null, group: 'mood', swatch: 'linear-gradient(135deg,#1e293b,#0b1120)' },
+  { key: 'soft-lifestyle', src: null, group: 'mood', swatch: 'linear-gradient(135deg,#fce7f3,#d6b7a5)' },
+  { key: 'night-cinematic', src: null, group: 'mood', noFaceOk: true, swatch: 'linear-gradient(135deg,#1e3a8a,#020617)' },
+];
+
+const ALL_STYLE_KEYS: string[] = ALL_CONCEPT_KEYS;
+
+// Drift guard, dev only. The `key` field is typed, so a typo won't compile —
+// but a style added to concept-keys.ts and forgotten here would simply have no
+// tile, i.e. be impossible to pick, with nothing to notice.
+if (process.env.NODE_ENV !== 'production') {
+  const untiled = ALL_CONCEPT_KEYS.filter((k) => !STYLE_OPTIONS.some((s) => s.key === k));
+  if (untiled.length) console.error(`[picker] no tile for concept(s): ${untiled.join(', ')}`);
+}
+
+// The four that ship selected. Deliberately the original set: it keeps the
+// default cost at 4 images, which is exactly the free allowance.
+const DEFAULT_STYLE_KEYS: string[] = ['face-surprise', 'jp-telop', 'global-clean', 'action'];
+
+const STYLE_GROUP_ORDER: StyleGroup[] = ['basic', 'show', 'mood'];
+
+// Only the four originals have rendered samples, so the landing-page gallery
+// shows those; the picker shows all ten.
+const GALLERY_TILES = STYLE_OPTIONS.filter(
+  (s): s is (typeof STYLE_OPTIONS)[number] & { src: string } => s.src !== null
+);
+
+const STYLE_PREF_KEY = 'quickthumb:styles';
 
 // Concept keys we have localized labels for (concepts.* in messages/*.json).
 // Guarding the lookup keeps next-intl from throwing on an unexpected key.
@@ -175,9 +216,14 @@ export default function Home() {
   // (right-of-publicity). Gates the file input; also sent to / enforced by the API.
   const [personaConsent, setPersonaConsent] = useState(false);
   const [customText, setCustomText] = useState('');
-  // Which styles to generate. Defaults to all four — the previous behaviour, so
-  // a user who ignores the picker gets exactly what they got before.
-  const [selectedStyles, setSelectedStyles] = useState<string[]>(ALL_STYLE_KEYS);
+  // Which styles to generate. Defaults to the original four, which is also
+  // exactly the free allowance, so a user who ignores the picker gets what
+  // they got before and never overspends by accident.
+  const [selectedStyles, setSelectedStyles] = useState<string[]>(DEFAULT_STYLE_KEYS);
+  // The six added styles start collapsed — ten tiles at once is where a
+  // first-time user stalls.
+  const [stylesExpanded, setStylesExpanded] = useState(false);
+  const stylesRestored = useRef(false);
   // Which result is mid-share — disables that card's Share button to stop a
   // double-tap from launching overlapping shares. The ref is the real guard
   // (synchronous); the state only drives the disabled visual.
@@ -241,7 +287,7 @@ export default function Home() {
       if (data.user) {
         const { data: p } = await supabase
           .from('profiles')
-          .select('plan, generations_used, generations_limit')
+          .select('plan, image_credits_used, image_credits_limit')
           .eq('id', data.user.id)
           .single();
         if (mounted) setProfile(p as Profile | null);
@@ -274,7 +320,7 @@ export default function Home() {
       for (let i = 0; i < 5 && !cancelled; i++) {
         const { data: p } = await supabase
           .from('profiles')
-          .select('plan, generations_used, generations_limit')
+          .select('plan, image_credits_used, image_credits_limit')
           .eq('id', user.id)
           .single();
         if (cancelled) return;
@@ -397,6 +443,44 @@ export default function Home() {
     }
   };
 
+  // Restore the previous pick once on mount. Ten styles is enough that
+  // re-choosing them every visit is real friction. Runs in an effect (not as
+  // useState's initialiser) because localStorage doesn't exist during SSR.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STYLE_PREF_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      if (!Array.isArray(saved)) return;
+      // Drop anything no longer offered, and ignore an empty result — restoring
+      // "nothing selected" would look like a broken form on arrival.
+      const valid = saved.filter((k: unknown): k is string => typeof k === 'string' && ALL_STYLE_KEYS.includes(k));
+      if (valid.length === 0) return;
+      setSelectedStyles(valid);
+      // If they had picked something outside the default four, show the rest
+      // straight away — otherwise their own selection is hidden behind "more".
+      if (valid.some((k) => !DEFAULT_STYLE_KEYS.includes(k))) setStylesExpanded(true);
+    } catch {
+      // Corrupt or unavailable storage (private mode): just use the defaults.
+    } finally {
+      // Gate the save effect below until the restore has had its turn, so the
+      // initial default of four never overwrites a stored selection.
+      stylesRestored.current = true;
+    }
+  }, []);
+
+  // Persist here rather than inside the setSelectedStyles updater: an updater
+  // must be pure, and React's dev-mode double-invocation runs a side effect
+  // inside one twice, writing a value that doesn't match the state it kept.
+  useEffect(() => {
+    if (!stylesRestored.current) return;
+    try {
+      localStorage.setItem(STYLE_PREF_KEY, JSON.stringify(selectedStyles));
+    } catch {
+      // Storage full or blocked — the picker still works, it just won't persist.
+    }
+  }, [selectedStyles]);
+
   const toggleStyle = (key: string) => {
     setSelectedStyles((prev) =>
       prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
@@ -426,6 +510,13 @@ export default function Home() {
       setError(t('form.errorNoStyles'));
       return;
     }
+    // Catch "picked 6 styles, 2 credits left" here rather than letting the
+    // server 402 after a round trip — the fix is to unpick a style, and saying
+    // so immediately is faster than a request.
+    if (remaining !== null && selectedStyles.length > remaining) {
+      setError(t('form.errorNotEnough', { remaining, requested: selectedStyles.length }));
+      return;
+    }
 
     setStatus('loading');
 
@@ -444,7 +535,17 @@ export default function Home() {
       const data = await res.json();
       if (!res.ok) {
         if (res.status === 402) {
-          setError(t('form.errorOverLimit', { limit: data.limit }));
+          // Out of credits entirely vs. simply picked more styles than are
+          // left — the second is fixed by unpicking a style, not by upgrading,
+          // so telling them apart matters.
+          setError(
+            data.code === 'insufficient_credits'
+              ? t('form.errorNotEnough', {
+                  remaining: data.remaining ?? 0,
+                  requested: data.requested ?? selectedStyles.length,
+                })
+              : t('form.errorOverLimit', { limit: data.limit })
+          );
         } else if (res.status === 429) {
           setError(t('form.errorBusy'));
         } else {
@@ -469,8 +570,8 @@ export default function Home() {
       setResults(data.thumbnails as Thumbnail[]);
       setProfile((prev) =>
         prev
-          ? { ...prev, generations_used: data.generations_used }
-          : { plan: 'free', generations_used: data.generations_used, generations_limit: data.generations_limit }
+          ? { ...prev, image_credits_used: data.image_credits_used }
+          : { plan: 'free', image_credits_used: data.image_credits_used, image_credits_limit: data.image_credits_limit }
       );
       setStatus('success');
     } catch {
@@ -573,7 +674,7 @@ export default function Home() {
     setCustomText('');
   };
 
-  const remaining = profile ? Math.max(0, profile.generations_limit - profile.generations_used) : null;
+  const remaining = profile ? Math.max(0, profile.image_credits_limit - profile.image_credits_used) : null;
 
   // Staged feedback for the in-flight generation. The client can't see real
   // backend progress, so advance through reassuring stages on a timer keyed to
@@ -604,7 +705,7 @@ export default function Home() {
               <>
                 {remaining !== null && (
                   <span style={{ opacity: 0.7 }}>
-                    {t('nav.remaining', { count: remaining, limit: profile!.generations_limit })}
+                    {t('nav.remaining', { count: remaining, limit: profile!.image_credits_limit })}
                   </span>
                 )}
                 {profile?.plan === 'pro' ? (
@@ -1017,99 +1118,190 @@ export default function Home() {
                 {t('styles.label')}
                 <span style={{ opacity: 0.7, fontWeight: 400 }}>{t('styles.hint')}</span>
               </span>
-              <span style={{ fontWeight: 400, opacity: 0.85 }}>
+              <span
+                style={{
+                  fontWeight: 400,
+                  opacity: 0.85,
+                  // Turns red the moment the picked count exceeds the balance,
+                  // so the problem is visible while choosing rather than on submit.
+                  color:
+                    remaining !== null && selectedStyles.length > remaining ? '#fca5a5' : undefined,
+                }}
+              >
                 {t('styles.count', { count: selectedStyles.length })}
               </span>
             </legend>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(118px, 1fr))',
-                gap: 8,
-              }}
-            >
-              {STYLE_OPTIONS.map((s) => {
-                const on = selectedStyles.includes(s.key);
-                return (
-                  <button
-                    key={s.key}
-                    type="button"
-                    onClick={() => toggleStyle(s.key)}
-                    disabled={status === 'loading'}
-                    aria-pressed={on}
+            {STYLE_GROUP_ORDER.map((group) => {
+              // Only the four defaults show until the user asks for more.
+              if (group !== 'basic' && !stylesExpanded) return null;
+              const tiles = STYLE_OPTIONS.filter((s) => s.group === group);
+              return (
+                <div key={group} style={{ marginBottom: 10 }}>
+                  {stylesExpanded && (
+                    <div style={{ fontSize: 12, opacity: 0.55, margin: '10px 0 6px' }}>
+                      {t(`styles.group.${group}`)}
+                    </div>
+                  )}
+                  <div
                     style={{
-                      display: 'block',
-                      width: '100%',
-                      padding: 0,
-                      textAlign: 'left',
-                      background: on ? 'rgba(167,139,250,0.16)' : 'rgba(0,0,0,0.25)',
-                      border: on
-                        ? '2px solid #a78bfa'
-                        : '2px solid rgba(255,255,255,0.12)',
-                      borderRadius: 12,
-                      overflow: 'hidden',
-                      color: '#fff',
-                      cursor: status === 'loading' ? 'default' : 'pointer',
-                      opacity: status === 'loading' ? 0.6 : 1,
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(132px, 1fr))',
+                      gap: 8,
                     }}
                   >
-                    <div style={{ position: 'relative' }}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={s.src}
-                        alt=""
-                        loading="lazy"
-                        width={1280}
-                        height={720}
-                        style={{
-                          width: '100%',
-                          height: 'auto',
-                          display: 'block',
-                          aspectRatio: '16/9',
-                          objectFit: 'cover',
-                          // Unpicked styles read as "off" at a glance.
-                          filter: on ? 'none' : 'grayscale(1) brightness(0.55)',
-                        }}
-                      />
-                      <span
-                        aria-hidden="true"
-                        style={{
-                          position: 'absolute',
-                          top: 6,
-                          left: 6,
-                          width: 20,
-                          height: 20,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: 13,
-                          fontWeight: 700,
-                          lineHeight: 1,
-                          borderRadius: 6,
-                          color: on ? '#0f0c29' : 'transparent',
-                          background: on ? '#a78bfa' : 'rgba(0,0,0,0.45)',
-                          border: on ? 'none' : '1.5px solid rgba(255,255,255,0.6)',
-                          boxSizing: 'border-box',
-                        }}
-                      >
-                        ✓
-                      </span>
-                    </div>
-                    <span
-                      style={{
-                        display: 'block',
-                        padding: '6px 8px 7px',
-                        fontSize: 12,
-                        fontWeight: on ? 600 : 400,
-                        opacity: on ? 1 : 0.7,
-                      }}
-                    >
-                      {t(`concepts.${s.key}`)}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+                    {tiles.map((s) => {
+                      const on = selectedStyles.includes(s.key);
+                      return (
+                        <button
+                          key={s.key}
+                          type="button"
+                          onClick={() => toggleStyle(s.key)}
+                          disabled={status === 'loading'}
+                          aria-pressed={on}
+                          style={{
+                            display: 'block',
+                            width: '100%',
+                            padding: 0,
+                            textAlign: 'left',
+                            background: on ? 'rgba(167,139,250,0.16)' : 'rgba(0,0,0,0.25)',
+                            border: on
+                              ? '2px solid #a78bfa'
+                              : '2px solid rgba(255,255,255,0.12)',
+                            borderRadius: 12,
+                            overflow: 'hidden',
+                            color: '#fff',
+                            cursor: status === 'loading' ? 'default' : 'pointer',
+                            opacity: status === 'loading' ? 0.6 : 1,
+                          }}
+                        >
+                          <div style={{ position: 'relative' }}>
+                            {s.src ? (
+                              /* eslint-disable-next-line @next/next/no-img-element */
+                              <img
+                                src={s.src}
+                                alt=""
+                                loading="lazy"
+                                width={1280}
+                                height={720}
+                                style={{
+                                  width: '100%',
+                                  height: 'auto',
+                                  display: 'block',
+                                  aspectRatio: '16/9',
+                                  objectFit: 'cover',
+                                  // Unpicked styles read as "off" at a glance.
+                                  filter: on ? 'none' : 'grayscale(1) brightness(0.55)',
+                                }}
+                              />
+                            ) : (
+                              // No sample rendered for this style yet. A coloured
+                              // swatch keeps the tile the same shape as the others
+                              // instead of showing a broken image.
+                              <div
+                                aria-hidden="true"
+                                style={{
+                                  width: '100%',
+                                  aspectRatio: '16/9',
+                                  background: s.swatch,
+                                  filter: on ? 'none' : 'grayscale(1) brightness(0.55)',
+                                }}
+                              />
+                            )}
+                            <span
+                              aria-hidden="true"
+                              style={{
+                                position: 'absolute',
+                                top: 6,
+                                left: 6,
+                                width: 20,
+                                height: 20,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: 13,
+                                fontWeight: 700,
+                                lineHeight: 1,
+                                borderRadius: 6,
+                                color: on ? '#0f0c29' : 'transparent',
+                                background: on ? '#a78bfa' : 'rgba(0,0,0,0.45)',
+                                border: on ? 'none' : '1.5px solid rgba(255,255,255,0.6)',
+                                boxSizing: 'border-box',
+                              }}
+                            >
+                              ✓
+                            </span>
+                            {/* Only shown when it matters: without a photo, the
+                                other eight ask the model for a face it doesn't have. */}
+                            {s.noFaceOk && !personaPath && (
+                              <span
+                                style={{
+                                  position: 'absolute',
+                                  bottom: 6,
+                                  right: 6,
+                                  padding: '2px 6px',
+                                  fontSize: 10,
+                                  fontWeight: 600,
+                                  lineHeight: 1.4,
+                                  borderRadius: 999,
+                                  color: '#0f0c29',
+                                  background: 'rgba(255,255,255,0.88)',
+                                }}
+                              >
+                                {t('styles.noFaceOk')}
+                              </span>
+                            )}
+                          </div>
+                          <span
+                            style={{
+                              display: 'block',
+                              padding: '6px 8px 7px',
+                              fontSize: 12,
+                              fontWeight: on ? 600 : 400,
+                              opacity: on ? 1 : 0.7,
+                            }}
+                          >
+                            {t(`concepts.${s.key}`)}
+                            <span
+                              style={{
+                                display: 'block',
+                                fontSize: 10,
+                                fontWeight: 400,
+                                opacity: 0.65,
+                                marginTop: 1,
+                              }}
+                            >
+                              {t(`conceptUse.${s.key}`)}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+            {!stylesExpanded && (
+              <button
+                type="button"
+                onClick={() => setStylesExpanded(true)}
+                style={{
+                  padding: '7px 12px',
+                  fontSize: 12,
+                  background: 'transparent',
+                  color: '#c4b5fd',
+                  border: '1px dashed rgba(196,181,253,0.4)',
+                  borderRadius: 9,
+                  cursor: 'pointer',
+                }}
+              >
+                {t('styles.more', { count: STYLE_OPTIONS.length - DEFAULT_STYLE_KEYS.length })}
+                {/* Without a photo the collapsed four are all face-first, so say
+                    outright that opening this reveals ones that don't need one. */}
+                {!personaPath && (
+                  <span style={{ opacity: 0.75 }}>{t('styles.moreNoFace')}</span>
+                )}
+              </button>
+            )}
             {selectedStyles.length === 0 && (
               <p style={{ fontSize: 12, color: '#fca5a5', margin: '8px 0 0' }}>
                 {t('styles.none')}
@@ -1350,7 +1542,7 @@ export default function Home() {
               </p>
             </div>
             <div className="thumb-row">
-              {STYLE_OPTIONS.map((ex) => (
+              {GALLERY_TILES.map((ex) => (
                 <figure key={ex.key} style={{ margin: 0, minWidth: 0 }}>
                   {/* No aria-label: the img alt (concept-specific) names the button. */}
                   <button

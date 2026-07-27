@@ -13,6 +13,7 @@
  */
 import Replicate from 'replicate';
 import sharp from 'sharp';
+import { CONCEPT_KEYS, type ConceptKey } from './concept-keys';
 
 export const NBP_MODEL = 'google/nano-banana-pro' as const;
 
@@ -21,7 +22,8 @@ export const NBP_MODEL = 'google/nano-banana-pro' as const;
 // JP videos), 'en' = an English hook (the global-localized variant — the
 // "one URL → JP + global thumbnail" wedge).
 export type NbpConcept = {
-  key: string;
+  /** Typed against the shared list so a typo or a missing style fails to compile. */
+  key: ConceptKey;
   lang: 'native' | 'en';
   /** Short human-facing label (also the i18n fallback string). */
   label: string;
@@ -89,8 +91,103 @@ export const NBP_CONCEPTS: NbpConcept[] = [
   },
 ];
 
+// ---------------------------------------------------------------------------
+// Added 2026-07-27. APPEND ONLY — never insert or reorder above this line:
+// uploaded files are named thumb-{originalIndex+1}.png, so shifting an index
+// renames a concept's slot in every future generation.
+//
+// The four originals all assume a shouting hero person, which locked out two
+// large groups: users who upload no photo at all, and calm/premium/beauty
+// content where "surprised face + thick outline" is the wrong language.
+// These six were picked from 18 candidates on distinctiveness at phone size,
+// coverage of the gaps, and how reliably NBP renders them first try.
+// ---------------------------------------------------------------------------
+NBP_CONCEPTS.push(
+  {
+    key: 'object-spotlight',
+    lang: 'native',
+    label: 'Object spotlight',
+    // Deliberately free of expression wording: this is the concept that has to
+    // read correctly when the "hero" is a bowl of ramen and no face exists.
+    build: (hook, topic, hasFace) =>
+      `A high-CTR 16:9 YouTube thumbnail about ${topic}, in a clean product-shot style. ${heroClause(hasFace)}, placed large and centred within the RIGHT half of the frame, lit from the front with clean bright studio light, a crisp rim highlight and a soft contact shadow. One completely flat, boldly saturated single-colour BACKGROUND field filling the whole frame in deep teal, crimson or cobalt, with a soft round glow directly behind the hero (a shape, no lettering), generous empty space, no props, no scenery and no texture. Keep the LEFT half of the frame clear for text. Place the text on the LEFT in a heavy white gothic font with a thick black outline, on one or two lines. ${legible(hook)} ${NO_EXTRA_TEXT} Crisp, premium and impossible to miss.`,
+  },
+  {
+    key: 'calm-authority',
+    lang: 'native',
+    // The only mirrored layout (hero LEFT, text RIGHT) — that alone makes it
+    // distinguishable from everything else in a grid of ten.
+    label: 'Calm authority',
+    // No thick outline and no serif: at NBP's ~85% CJK fidelity, thin and
+    // serif faces are where kana degrades first. The premium read has to come
+    // from palette, whitespace and lighting instead.
+    build: (hook, topic, hasFace) =>
+      `A calm, premium 16:9 YouTube thumbnail about ${topic}, in a restrained editorial style. ${heroClause(hasFace)}, framed calmly and squarely facing the camera, placed large on the LEFT third of the frame with generous empty space around it and even soft directional studio light. Deep muted navy and charcoal BACKGROUND with low saturation, a shallow depth of field and one restrained off-white horizontal accent bar low in the frame (a shape, no lettering) that never touches the hero or the text. Keep the RIGHT half of the frame clear for text. Place the text on the RIGHT in a heavy near-white gothic sans-serif with a very subtle soft shadow and no thick outline, on one or two lines. ${legible(hook)} ${NO_EXTRA_TEXT} Quiet, expert and high-trust.`,
+  },
+  {
+    key: 'split-compare',
+    lang: 'native',
+    label: 'Before & after',
+    // Exactly ONE hero: a second person would be invented by the model and
+    // there is only one image_input, so identity would break on the fake one.
+    // The "two states" read comes from colour temperature + divider + chevron;
+    // VS / BEFORE / AFTER lettering would collide with NO_EXTRA_TEXT, so it
+    // belongs in the hook string instead.
+    build: (hook, topic, hasFace) =>
+      `A high-CTR 16:9 YouTube thumbnail about ${topic}, built as a two-tone split frame with flat graphic-design BACKGROUND blocks only. ${heroClause(hasFace)}, kept PHOTOGRAPHIC and realistic — NOT illustrated, drawn or cartoon — placed large and centred within the RIGHT half of the frame and brightly, warmly lit. The BACKGROUND is divided straight down the middle into two flat, strongly contrasting colour halves, cool and desaturated blue on the LEFT and warm and vivid red-orange on the RIGHT, joined by one bold clean divider band (a shape, no lettering) and one large chevron pointing from the LEFT half toward the hero (a shape, no lettering); neither graphic crosses the hero or the text, and the flat graphic styling applies to the background and shapes, never to the person's face. Keep the LEFT third of the frame clear for text. Place the text on the LEFT in a heavy white-and-yellow gothic font with a thick black outline and a slight skew, on one or two lines. ${legible(hook)} ${NO_EXTRA_TEXT} Bold, punchy and a clear change at a glance.`,
+  },
+  {
+    key: 'risk-warning',
+    lang: 'native',
+    label: 'Warning',
+    // "striped band", never "caution tape" — real tape carries printed words,
+    // and naming it re-invites the invented-signage failure NO_EXTRA_TEXT
+    // exists to prevent.
+    build: (hook, topic, hasFace) =>
+      `A high-CTR 16:9 YouTube thumbnail about ${topic} with an urgent warning look. ${heroClause(hasFace)}, placed large in the upper half of the frame slightly to the RIGHT of centre, brightly and evenly lit so it separates cleanly from the dark surroundings. Deep black BACKGROUND with one broad diagonal red and yellow striped band (a shape, no lettering) running behind the hero and one bold red ring with a diagonal slash across it (a shape, no lettering) beside the hero; neither graphic touches the hero or the BOTTOM third. Keep the BOTTOM third of the frame clear for text. Place the text across the BOTTOM in a heavy bright yellow gothic font with a thick black outline, on one or two lines. ${legible(hook)} ${NO_EXTRA_TEXT} Urgent and high-stakes.`,
+  },
+  {
+    key: 'soft-lifestyle',
+    lang: 'native',
+    label: 'Soft lifestyle',
+    // The solid bottom band is the trick that lets a pastel scene keep plain
+    // white heavy gothic (the CJK-safe family) at full contrast, instead of
+    // forcing a pale or thin face that NBP garbles.
+    build: (hook, topic, hasFace) =>
+      `A soft, high-CTR 16:9 YouTube thumbnail about ${topic}, in a gentle lifestyle style. ${heroClause(hasFace)}, placed large and centred in the upper two-thirds of the frame, close to the camera, calm and relaxed in feel, clearly lit with soft diffused window light. Creamy pastel BACKGROUND in warm beige, pale rose and soft ivory with a very shallow depth of field so the surroundings melt into out-of-focus soft shapes and gentle bokeh, no props and no scenery detail, plus one solid deep rose-brown horizontal band across the BOTTOM of the frame (a shape, no lettering). Keep the BOTTOM band clear for text. Place the text across the BOTTOM on the solid band in a heavy white gothic font with a subtle shadow, on one or two lines. ${legible(hook)} ${NO_EXTRA_TEXT} Soft, warm and inviting.`,
+  },
+  {
+    key: 'night-cinematic',
+    // Second English slot: true-crime / documentary / storytime is a huge
+    // global format, and a short Latin hook suits a wide horizontal band.
+    lang: 'en',
+    label: 'Cinematic night',
+    // Front-lit, never a silhouette — that clause is what protects identity in
+    // the only dark-and-quiet concept. "top band" stays lowercase: TOP is not
+    // one of the validated caps tokens, and a stray all-caps word in the
+    // prompt is exactly how a literal "EXACTLY" once got baked onto an image.
+    build: (hook, topic, hasFace) =>
+      `A cinematic 16:9 YouTube thumbnail about ${topic}, in a quiet storytelling style. ${heroClause(hasFace)}, placed large and centred in the lower two-thirds of the frame, clearly lit from the front by a soft warm key light so it stays bright against the dark surroundings, with no heavy shadow falling across it. Dark, deeply out-of-focus night-blue BACKGROUND with drifting haze, a warm rim light behind the hero, a filmic colour grade and deep shadow falloff toward the upper area of the frame; no buildings, no street furniture and no lit scenery, an empty atmospheric field only. Keep the top band of the frame clear for text. Place the text across the top band in a heavy white gothic font with a subtle shadow, on one or two lines. ${legible(hook)} ${NO_EXTRA_TEXT} Quiet, ominous and cinematic.`,
+  }
+);
+
 /** Canonical concept keys, in display order. The UI mirrors this list. */
 export const NBP_CONCEPT_KEYS: string[] = NBP_CONCEPTS.map((c) => c.key);
+
+// Drift guard. TypeScript catches a *misspelled* key (NbpConcept['key'] is
+// ConceptKey), but not a key listed in concept-keys.ts that nobody wrote a
+// prompt for — that one would only surface as a picker tile whose generations
+// silently never appear. Warn loudly in dev; never throw, because a mismatch
+// must not take the production route down.
+if (process.env.NODE_ENV !== 'production') {
+  const missing = CONCEPT_KEYS.filter((k) => !NBP_CONCEPTS.some((c) => c.key === k));
+  const extra = NBP_CONCEPTS.filter((c) => !CONCEPT_KEYS.includes(c.key)).map((c) => c.key);
+  if (missing.length || extra.length) {
+    console.error(
+      `[nbp] concept drift — no prompt for: [${missing.join(', ')}]; not in CONCEPT_KEYS: [${extra.join(', ')}]`
+    );
+  }
+}
 
 /**
  * Resolve client-supplied style keys to the concepts to generate.
