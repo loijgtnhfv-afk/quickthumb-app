@@ -36,6 +36,7 @@
     "errorPersonaLoad": "アップロードした写真を読み込めませんでした。もう一度アップロードしてお試しください。",
     "errorPersonaInvalid": "アップロードした写真に問題があります。もう一度アップロードしてください。",
     "errorServer": "問題が発生しました。もう一度お試しください。",
+    "errorNoStyles": "スタイルを1つ以上選んでください。",
     "urlHint": "youtube.com/watch、youtu.be、Shortsリンクに対応しています。"
   },
   "loading": {
@@ -61,6 +62,12 @@
     "rateLimited": "アップロードが多すぎます。少し待ってからお試しください。",
     "faceRejected": "顔がはっきり1つ写っている写真が見つかりませんでした。正面のはっきりした顔写真（あなた1人）をアップしてください。",
     "faceRejectedMultiple": "複数の顔が検出されました。あなた1人だけが写った写真をアップしてください。"
+  },
+  "styles": {
+    "label": "作るスタイル",
+    "hint": " · 複数選べます",
+    "count": "{count}枚つくる",
+    "none": "スタイルを1つ以上選んでください。"
   },
   "caption": {
     "label": "字幕（任意）",

@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import Replicate from 'replicate';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { generateNbpThumbnail, NBP_CONCEPTS } from '@/lib/nbp';
+import { generateNbpThumbnail, NBP_CONCEPTS, selectConcepts } from '@/lib/nbp';
 import { extractVideoId, fetchVideoMetadata } from '@/lib/youtube';
 import { isRateLimited } from '@/lib/rate-limit';
 import { PERSONA_BUCKET, isValidPersonaPath } from '@/lib/personas';
@@ -232,6 +232,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'youtube_url is required', code: 'empty' }, { status: 400 });
     }
 
+    // Which styles to generate. Omitting the field keeps the old behaviour
+    // (all four); sending a list that matches nothing is a client bug worth
+    // surfacing rather than silently generating — and billing — all four.
+    const selected = selectConcepts(body.concept_keys);
+    if (selected.length === 0) {
+      return NextResponse.json(
+        { error: 'Select at least one style', code: 'no_styles' },
+        { status: 400 }
+      );
+    }
+
     // SECURITY / CONSENT: only accept a persona PATH inside THIS user's own
     // namespace in the private personas bucket. The UI gets this path from
     // /api/upload-persona (which face-validates, records consent, and stores it).
@@ -326,7 +337,11 @@ export async function POST(request: NextRequest) {
       if (concept.lang === 'en') return hooksEn[i % Math.max(1, hooksEn.length)] || fbEn;
       return hooksNative[i % Math.max(1, hooksNative.length)] || fbNative;
     };
-    const prompts = NBP_CONCEPTS.map((c, i) => c.build(hookFor(c, i), topic, hasFace));
+    // Hook index = the concept's ORIGINAL position, so a style gets the same
+    // hook whether it was generated alone or alongside the other three.
+    const prompts = selected.map(({ concept, index }) =>
+      concept.build(hookFor(concept, index), topic, hasFace)
+    );
 
     // Atomically charge the quota slot now, immediately before the paid NBP work
     // (after the cheap metadata/Haiku calls so an invalid URL never costs a slot).
@@ -376,15 +391,17 @@ export async function POST(request: NextRequest) {
       // failures (NBP safety filter, transient errors): one bad concept must not
       // sink the whole generation — we keep whatever succeeded.
       const settled = await Promise.allSettled(
-        NBP_CONCEPTS.map(async (concept, i) => {
+        selected.map(async ({ concept, index }, i) => {
           const buf = await generateNbpThumbnail({ replicate, prompt: prompts[i], faceRefUrls });
-          const url = await uploadPng(buf, user.id, generationId, `thumb-${i + 1}`);
+          // Name by the concept's original slot, not the position within this
+          // selection, so file names stay meaningful across partial runs.
+          const url = await uploadPng(buf, user.id, generationId, `thumb-${index + 1}`);
           return { url, conceptKey: concept.key, label: concept.label };
         })
       );
       thumbs = settled.flatMap((r, i) => {
         if (r.status === 'fulfilled') return [r.value];
-        console.warn(`NBP concept ${NBP_CONCEPTS[i].key} failed:`, r.reason);
+        console.warn(`NBP concept ${selected[i].concept.key} failed:`, r.reason);
         return [];
       });
       if (thumbs.length === 0) throw new Error('All thumbnail generations failed');
@@ -420,6 +437,10 @@ export async function POST(request: NextRequest) {
         engine: 'nano-banana-pro',
         has_face: hasFace,
         custom_text: customText || null,
+        // What was asked for vs. what survived — makes "which styles do people
+        // actually pick, and which ones keep failing" answerable later.
+        concepts: selected.map(({ concept }) => concept.key),
+        concepts_delivered: thumbs.map((t) => t.conceptKey),
       },
     });
     if (logErr) console.error('generate: failed to write usage log', logErr);

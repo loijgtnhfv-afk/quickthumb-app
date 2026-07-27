@@ -89,6 +89,32 @@ export const NBP_CONCEPTS: NbpConcept[] = [
   },
 ];
 
+/** Canonical concept keys, in display order. The UI mirrors this list. */
+export const NBP_CONCEPT_KEYS: string[] = NBP_CONCEPTS.map((c) => c.key);
+
+/**
+ * Resolve client-supplied style keys to the concepts to generate.
+ *
+ * Each pick keeps its ORIGINAL index in NBP_CONCEPTS, because the caller uses
+ * that index to pick a hook and to name the uploaded file. Keeping it stable
+ * means a given style always gets the same hook and the same `thumb-N.png`
+ * slot no matter what else was selected — so picking one style reproduces the
+ * image you'd have gotten from that style in a full run.
+ *
+ * Unknown keys are ignored rather than rejected (an old client, or a stale
+ * tab, shouldn't hard-fail). `undefined` means "no preference" → everything,
+ * which keeps existing API callers working. An explicit list that resolves to
+ * nothing returns [], and the route turns that into a 400 — silently
+ * generating all four would charge a quota slot for work nobody asked for.
+ */
+export function selectConcepts(raw: unknown): { concept: NbpConcept; index: number }[] {
+  const all = NBP_CONCEPTS.map((concept, index) => ({ concept, index }));
+  if (raw === undefined || raw === null) return all;
+  if (!Array.isArray(raw)) return [];
+  const wanted = new Set(raw.filter((k): k is string => typeof k === 'string'));
+  return all.filter(({ concept }) => wanted.has(concept.key));
+}
+
 // Normalise whatever the replicate client returns (a FileOutput with .blob()/
 // .url(), a URL string, or an array of those) into raw image bytes.
 async function toImageBytes(out: unknown): Promise<Buffer | null> {

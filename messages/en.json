@@ -36,6 +36,7 @@
     "errorPersonaLoad": "We couldn’t load your uploaded photo. Please re-upload and try again.",
     "errorPersonaInvalid": "There’s a problem with the uploaded photo. Please re-upload it.",
     "errorServer": "Something went wrong. Please try again.",
+    "errorNoStyles": "Pick at least one style.",
     "urlHint": "Works with youtube.com/watch, youtu.be, and Shorts links."
   },
   "loading": {
@@ -61,6 +62,12 @@
     "rateLimited": "Too many uploads recently. Please wait a bit and try again.",
     "faceRejected": "We couldn’t find a single clear face in that photo. Upload a clear, front-facing photo of just your face.",
     "faceRejectedMultiple": "We detected more than one face. Upload a photo of just yourself."
+  },
+  "styles": {
+    "label": "Styles to generate",
+    "hint": " · pick one or more",
+    "count": "{count, plural, =1 {1 thumbnail} other {# thumbnails}}",
+    "none": "Pick at least one style."
   },
   "caption": {
     "label": "Caption (optional)",

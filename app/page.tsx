@@ -21,20 +21,26 @@ interface Profile {
   generations_limit: number;
 }
 
-// Concept keys we have localized labels for (concepts.* in messages/*.json).
-// Guarding the lookup keeps next-intl from throwing on an unexpected key.
-const CONCEPT_LABEL_KEYS = new Set(['face-surprise', 'jp-telop', 'global-clean', 'action']);
-
-// Landing-page example gallery: real, unedited output of the production
-// pipeline (generated via scripts/gen-examples.ts). The face in the samples is
-// an AI-created FICTIONAL persona — never a real person — so they are
-// publishable without likeness concerns.
-const EXAMPLES = [
+// The four styles, in the same order as NBP_CONCEPTS in lib/nbp.ts (the API
+// returns them in that order). Used for BOTH the landing-page gallery and the
+// style picker — one list so a style can never appear in one and not the other.
+//
+// `src` is real, unedited output of the production pipeline (generated via
+// scripts/gen-examples.ts). The face in the samples is an AI-created FICTIONAL
+// persona — never a real person — so they are publishable without likeness
+// concerns.
+const STYLE_OPTIONS = [
   { key: 'face-surprise', src: '/examples/face-surprise.jpg' },
   { key: 'jp-telop', src: '/examples/jp-telop.jpg' },
   { key: 'global-clean', src: '/examples/global-clean.jpg' },
   { key: 'action', src: '/examples/action.jpg' },
 ] as const;
+
+const ALL_STYLE_KEYS: string[] = STYLE_OPTIONS.map((s) => s.key);
+
+// Concept keys we have localized labels for (concepts.* in messages/*.json).
+// Guarding the lookup keeps next-intl from throwing on an unexpected key.
+const CONCEPT_LABEL_KEYS = new Set<string>(ALL_STYLE_KEYS);
 
 function isValidYouTubeUrl(url: string): boolean {
   const patterns = [
@@ -169,6 +175,9 @@ export default function Home() {
   // (right-of-publicity). Gates the file input; also sent to / enforced by the API.
   const [personaConsent, setPersonaConsent] = useState(false);
   const [customText, setCustomText] = useState('');
+  // Which styles to generate. Defaults to all four — the previous behaviour, so
+  // a user who ignores the picker gets exactly what they got before.
+  const [selectedStyles, setSelectedStyles] = useState<string[]>(ALL_STYLE_KEYS);
   // Which result is mid-share — disables that card's Share button to stop a
   // double-tap from launching overlapping shares. The ref is the real guard
   // (synchronous); the state only drives the disabled visual.
@@ -388,6 +397,15 @@ export default function Home() {
     }
   };
 
+  const toggleStyle = (key: string) => {
+    setSelectedStyles((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+    );
+    // Clearing a stale "pick at least one style" warning as soon as the user
+    // picks one — leaving it up while the form is valid again reads as broken.
+    setError('');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -404,6 +422,10 @@ export default function Home() {
       setError(t('form.errorInvalid'));
       return;
     }
+    if (selectedStyles.length === 0) {
+      setError(t('form.errorNoStyles'));
+      return;
+    }
 
     setStatus('loading');
 
@@ -415,6 +437,8 @@ export default function Home() {
           youtube_url: url,
           persona_path: personaPath,
           custom_text: customText.trim(),
+          // Send in canonical order so the results grid matches the picker.
+          concept_keys: ALL_STYLE_KEYS.filter((k) => selectedStyles.includes(k)),
         }),
       });
       const data = await res.json();
@@ -432,6 +456,7 @@ export default function Home() {
             persona_load: 'form.errorPersonaLoad',
             persona_invalid: 'form.errorPersonaInvalid',
             invalid_url: 'form.errorInvalid',
+            no_styles: 'form.errorNoStyles',
             empty: 'form.errorEmpty',
             server: 'form.errorServer',
           };
@@ -961,6 +986,137 @@ export default function Home() {
             <div style={{ fontSize: 11, opacity: 0.5, marginTop: 8 }}>{t('persona.consent')}</div>
           </div>
 
+          {/* Style picker. Multi-select, all four on by default. Each option
+              shows the real sample output for that style, because "驚き顔" vs
+              "テロップ強調" means nothing to a first-time user — the picture
+              does the explaining. */}
+          <fieldset
+            style={{
+              marginTop: 18,
+              padding: 0,
+              border: 'none',
+              minWidth: 0, // fieldsets don't shrink below content width without this
+            }}
+          >
+            <legend
+              style={{
+                display: 'flex',
+                width: '100%',
+                alignItems: 'baseline',
+                justifyContent: 'space-between',
+                gap: 8,
+                flexWrap: 'wrap',
+                fontSize: 13,
+                opacity: 0.7,
+                marginBottom: 8,
+                fontWeight: 500,
+                padding: 0,
+              }}
+            >
+              <span>
+                {t('styles.label')}
+                <span style={{ opacity: 0.7, fontWeight: 400 }}>{t('styles.hint')}</span>
+              </span>
+              <span style={{ fontWeight: 400, opacity: 0.85 }}>
+                {t('styles.count', { count: selectedStyles.length })}
+              </span>
+            </legend>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(118px, 1fr))',
+                gap: 8,
+              }}
+            >
+              {STYLE_OPTIONS.map((s) => {
+                const on = selectedStyles.includes(s.key);
+                return (
+                  <button
+                    key={s.key}
+                    type="button"
+                    onClick={() => toggleStyle(s.key)}
+                    disabled={status === 'loading'}
+                    aria-pressed={on}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      padding: 0,
+                      textAlign: 'left',
+                      background: on ? 'rgba(167,139,250,0.16)' : 'rgba(0,0,0,0.25)',
+                      border: on
+                        ? '2px solid #a78bfa'
+                        : '2px solid rgba(255,255,255,0.12)',
+                      borderRadius: 12,
+                      overflow: 'hidden',
+                      color: '#fff',
+                      cursor: status === 'loading' ? 'default' : 'pointer',
+                      opacity: status === 'loading' ? 0.6 : 1,
+                    }}
+                  >
+                    <div style={{ position: 'relative' }}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={s.src}
+                        alt=""
+                        loading="lazy"
+                        width={1280}
+                        height={720}
+                        style={{
+                          width: '100%',
+                          height: 'auto',
+                          display: 'block',
+                          aspectRatio: '16/9',
+                          objectFit: 'cover',
+                          // Unpicked styles read as "off" at a glance.
+                          filter: on ? 'none' : 'grayscale(1) brightness(0.55)',
+                        }}
+                      />
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          position: 'absolute',
+                          top: 6,
+                          left: 6,
+                          width: 20,
+                          height: 20,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: 13,
+                          fontWeight: 700,
+                          lineHeight: 1,
+                          borderRadius: 6,
+                          color: on ? '#0f0c29' : 'transparent',
+                          background: on ? '#a78bfa' : 'rgba(0,0,0,0.45)',
+                          border: on ? 'none' : '1.5px solid rgba(255,255,255,0.6)',
+                          boxSizing: 'border-box',
+                        }}
+                      >
+                        ✓
+                      </span>
+                    </div>
+                    <span
+                      style={{
+                        display: 'block',
+                        padding: '6px 8px 7px',
+                        fontSize: 12,
+                        fontWeight: on ? 600 : 400,
+                        opacity: on ? 1 : 0.7,
+                      }}
+                    >
+                      {t(`concepts.${s.key}`)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {selectedStyles.length === 0 && (
+              <p style={{ fontSize: 12, color: '#fca5a5', margin: '8px 0 0' }}>
+                {t('styles.none')}
+              </p>
+            )}
+          </fieldset>
+
           <div style={{ marginTop: 14 }}>
             <label
               htmlFor="custom-text"
@@ -1194,7 +1350,7 @@ export default function Home() {
               </p>
             </div>
             <div className="thumb-row">
-              {EXAMPLES.map((ex) => (
+              {STYLE_OPTIONS.map((ex) => (
                 <figure key={ex.key} style={{ margin: 0, minWidth: 0 }}>
                   {/* No aria-label: the img alt (concept-specific) names the button. */}
                   <button
