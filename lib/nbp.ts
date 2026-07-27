@@ -15,7 +15,26 @@ import Replicate from 'replicate';
 import sharp from 'sharp';
 import { CONCEPT_KEYS, DEFAULT_CONCEPT_KEYS, type ConceptKey } from './concept-keys';
 
-export const NBP_MODEL = 'google/nano-banana-pro' as const;
+/**
+ * The image model, switchable from the environment.
+ *
+ * Moved from google/nano-banana-pro to google/nano-banana-2 (Gemini 3.1 Flash
+ * Image) on 2026-07-27 after a measured bake-off — scripts/bakeoff.ts, 15 real
+ * Japanese hooks per engine, every disputed result checked by eye:
+ *
+ *              japanese text   avg latency   cost/image
+ *   nbp Pro       14/15           34s          $0.134
+ *   nb2           15/15           19s          $0.067
+ *
+ * So: better text, ~1.8x faster, half the price. The hard cases (ぶっちゃけます,
+ * コスパ最強, え、まじ？, 3日で5kg減, 新NISAの正解) all rendered correctly on
+ * nb2, while nbp Pro invented a particle — "コスパの最強" — in one of them.
+ *
+ * Read from the env so a regression can be rolled back by setting NBP_MODEL in
+ * Vercel, with no deploy: image quality is subjective and a bake-off is a
+ * sample, not a guarantee.
+ */
+export const NBP_MODEL = (process.env.NBP_MODEL ?? 'google/nano-banana-2') as `${string}/${string}`;
 
 // A "concept" is a conceptually-different thumbnail idea (NOT a font swap).
 // `lang` picks which hook to feed: 'native' = the title's own language (JP for
@@ -86,8 +105,20 @@ export const NBP_CONCEPTS: NbpConcept[] = [
     key: 'action',
     lang: 'native',
     label: 'Action energy',
+    // REWRITTEN 2026-07-27. The old wording opened with "comic-book-style" and
+    // relied on "NOT illustrated, drawn or cartoon" to claw the person back to
+    // photographic. It didn't work: in a bake-off BOTH engines returned an
+    // illustrated face, which for this product is the worst possible failure —
+    // the user's uploaded face is the whole point, and a cartoon of it is not
+    // them. Two lessons are baked in here: an image model takes its medium from
+    // the FIRST thing it reads, so the sentence now opens "A photorealistic
+    // photograph"; and negations are weak, so instead of forbidding "cartoon"
+    // we positively describe skin, hair and camera. The word "comic" is gone
+    // entirely — the burst effects are now named as the concrete shapes we
+    // actually want (radiating lines, halftone dots), which cannot be applied
+    // to a face the way a whole-image art style can.
     build: (hook, topic, hasFace) =>
-      `A high-energy 16:9 YouTube thumbnail about ${topic} with comic-book-style BACKGROUND effects only. ${heroClause(hasFace)}, kept PHOTOGRAPHIC and realistic — NOT illustrated, drawn or cartoon — with an intense excited expression, fist raised, placed CENTER-RIGHT. Dark dramatic background with comic-style vibrant red and orange energy bursts and strong rim light (apply the comic styling to the background and effects, never to the person's face). Reserve a clear band on the LEFT for the text. Place the text on the LEFT in a bright bold yellow font with a thick black outline and a slight skew. ${legible(hook)} ${NO_EXTRA_TEXT} Explosive and exciting.`,
+      `A photorealistic 16:9 YouTube thumbnail photograph about ${topic}, shot on a real camera. ${heroClause(hasFace)}, with an intense excited expression and one fist raised, placed CENTER-RIGHT. The person must stay a real photograph throughout — real skin texture, real hair, real photographic lighting — and must never be redrawn, illustrated, stylised, animated or turned into a drawing. BEHIND the person, a dark dramatic background built only from flat graphic shapes: vivid red and orange radiating burst lines, a halftone dot texture, and a strong warm rim light separating them from the background. Those graphic shapes stay strictly in the background and never cross, cover or restyle the person. Reserve a clear band on the LEFT for the text. Place the text on the LEFT in a bright bold yellow font with a thick black outline and a slight skew. ${legible(hook)} ${NO_EXTRA_TEXT} Explosive and exciting.`,
   },
 ];
 

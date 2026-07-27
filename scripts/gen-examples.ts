@@ -37,8 +37,6 @@ if (!process.env.REPLICATE_API_TOKEN) {
 
 const OUT_DIR = join(process.cwd(), '.preview-examples');
 const PUBLISH_DIR = join(process.cwd(), 'public', 'examples');
-const PORTRAIT_PATH = join(OUT_DIR, 'persona.png');
-
 // One sample per concept. Hooks stay close to the prod-validated phrases
 // (まさかの結末 / 1日で100万 / I QUIT / 新記録達成) to minimize garble risk;
 // topics vary to show range. lang must match each concept's lang in lib/nbp.ts.
@@ -89,12 +87,37 @@ const SAMPLES: Record<string, { topic: string; hook: string }> = {
   },
 };
 
-const PORTRAIT_PROMPT =
-  'A photorealistic studio headshot portrait of a fictional Japanese man in his mid-20s, ' +
-  'a friendly approachable YouTube content creator with short black hair and a natural smile, ' +
-  'looking straight at the camera, plain light gray studio background, soft even lighting, ' +
-  'sharp focus on the face, head and shoulders only. This is an entirely fictional person ' +
-  'who does not resemble any real individual.';
+// Two fictional personas. The samples are what a first-time visitor uses to
+// decide whether a style is "for them", so a beauty/lifestyle tile showing a
+// man in his mid-20s quietly tells the largest audience for that style that it
+// isn't. Both are entirely fictional — no real person's likeness is involved.
+const PERSONAS: Record<'default' | 'beauty', { path: string; prompt: string }> = {
+  default: {
+    path: join(OUT_DIR, 'persona.png'),
+    prompt:
+      'A photorealistic studio headshot portrait of a fictional Japanese man in his mid-20s, ' +
+      'a friendly approachable YouTube content creator with short black hair and a natural smile, ' +
+      'looking straight at the camera, plain light gray studio background, soft even lighting, ' +
+      'sharp focus on the face, head and shoulders only. This is an entirely fictional person ' +
+      'who does not resemble any real individual.',
+  },
+  beauty: {
+    path: join(OUT_DIR, 'persona-beauty.png'),
+    prompt:
+      'A photorealistic studio headshot portrait of a fictional Japanese woman in her mid-20s, ' +
+      'a friendly approachable beauty and lifestyle YouTube creator with shoulder-length dark hair ' +
+      'and a natural relaxed smile, looking straight at the camera, plain light gray studio ' +
+      'background, soft even lighting, sharp focus on the face, head and shoulders only. ' +
+      'This is an entirely fictional person who does not resemble any real individual.',
+  },
+};
+
+// Which persona each concept's sample uses. Anything unlisted uses `default`.
+const SAMPLE_PERSONA: Record<string, keyof typeof PERSONAS> = {
+  'soft-lifestyle': 'beauty',
+};
+
+const PORTRAIT_PATH = PERSONAS.default.path;
 
 async function toBytes(out: unknown): Promise<Buffer | null> {
   const item: unknown = Array.isArray(out) ? out[0] : out;
@@ -113,12 +136,13 @@ async function toBytes(out: unknown): Promise<Buffer | null> {
   return Buffer.from(await res.arrayBuffer());
 }
 
-async function genPortrait(replicate: Replicate) {
+async function genPortrait(replicate: Replicate, which: keyof typeof PERSONAS = 'default') {
   mkdirSync(OUT_DIR, { recursive: true });
-  process.stdout.write('[portrait] generating fictional persona... ');
+  const persona = PERSONAS[which];
+  process.stdout.write(`[portrait:${which}] generating fictional persona... `);
   const out = await replicate.run(NBP_MODEL, {
     input: {
-      prompt: PORTRAIT_PROMPT,
+      prompt: persona.prompt,
       image_input: [],
       aspect_ratio: '1:1',
       resolution: '1K',
@@ -128,14 +152,14 @@ async function genPortrait(replicate: Replicate) {
   const bytes = await toBytes(out);
   if (!bytes) throw new Error('portrait: no image returned');
   const png = await sharp(bytes).resize(800, 800, { fit: 'cover' }).png().toBuffer();
-  writeFileSync(PORTRAIT_PATH, png);
-  console.log(`ok ${(png.length / 1024).toFixed(0)}KB -> ${PORTRAIT_PATH}`);
+  writeFileSync(persona.path, png);
+  console.log(`ok ${(png.length / 1024).toFixed(0)}KB -> ${persona.path}`);
 }
 
 // The prod path takes a URL for the face ref. Upload the local portrait via
 // Replicate's files API and use its URL; fall back to a data URI if that fails.
-async function portraitRefUrl(replicate: Replicate): Promise<string> {
-  const png = readFileSync(PORTRAIT_PATH);
+async function portraitRefUrl(replicate: Replicate, path: string): Promise<string> {
+  const png = readFileSync(path);
   // Identity ref doesn't need full res — keep the data-URI fallback small.
   const jpeg = await sharp(png).resize(640, 640).jpeg({ quality: 82 }).toBuffer();
   try {
@@ -153,11 +177,21 @@ async function genSamples(replicate: Replicate, only?: string) {
     throw new Error('persona.png missing — run `gen-examples.ts portrait` first');
   }
   mkdirSync(OUT_DIR, { recursive: true });
-  const refUrl = await portraitRefUrl(replicate);
+  // One ref URL per persona, uploaded on first use.
+  const refUrls = new Map<string, string>();
   for (const concept of NBP_CONCEPTS) {
     if (only && concept.key !== only) continue;
     const sample = SAMPLES[concept.key];
     if (!sample) continue;
+    const which = SAMPLE_PERSONA[concept.key] ?? 'default';
+    const personaPath = PERSONAS[which].path;
+    if (!existsSync(personaPath)) {
+      console.log(`
+[sample:${concept.key}] SKIP — ${personaPath} missing (run: gen-examples.ts portrait ${which})`);
+      continue;
+    }
+    if (!refUrls.has(which)) refUrls.set(which, await portraitRefUrl(replicate, personaPath));
+    const refUrl = refUrls.get(which)!;
     const prompt = concept.build(sample.hook, sample.topic, true); // hasFace = true
     process.stdout.write(`\n[sample:${concept.key}] hook="${sample.hook}" generating... `);
     try {
@@ -190,7 +224,7 @@ async function publish() {
 async function main() {
   const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
   const cmd = process.argv[2];
-  if (cmd === 'portrait') await genPortrait(replicate);
+  if (cmd === 'portrait') await genPortrait(replicate, (process.argv[3] as 'default' | 'beauty') || 'default');
   else if (cmd === 'samples') await genSamples(replicate, process.argv[3]);
   else if (cmd === 'publish') await publish();
   else {
