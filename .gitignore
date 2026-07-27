@@ -52,3 +52,4 @@ references/*/*.webp
 npm-install.log
 package-lock.json
 .preview-examples/
+.bakeoff/
