@@ -1,8 +1,21 @@
 {
-  "generated_at": null,
+  "generated_at": "2026-08-03",
   "source": "thumbnail-gallery.net (SAMUNE)",
-  "sampled": 0,
-  "note": "Populated weekly by `npm run learn-gallery` (see .github/workflows/learn-from-gallery.yml). Empty is valid and means every concept prompt is used exactly as written in lib/nbp.ts.",
-  "observations": [],
-  "byConcept": {}
+  "sampled": 36,
+  "note": "Written by scripts/learn-from-gallery.ts. Images are never stored — only these written observations. Consumed by lib/gallery-insights.ts.",
+  "observations": [
+    "- **Colour palette**: Highly saturated, neon-forward designs with bold primaries (hot pink, electric yellow, vibrant blue) contrasting against darker or neutral backdrops; pastels and jewel tones also present but less dominant\n- **Lighting & contrast**: High contrast throughout—bright highlights against deep shadows or dark backgrounds; strong directional lighting on subjects creates visual pop and separation\n- **Background treatment**: Mix of flat solid colours, heavily blurred environments, and textured/graded overlays; depth varies from minimal (graphic-heavy designs) to moderate (photographic elements); some use water/particle effects or distress textures\n- **Overall mood & energy**: High-energy and attention-grabbing; ranges from playful and youthful to dramatic and intense; visual urgency conveyed through saturation and contrast choices\n- **Visual space**: Moderate to significant empty space; frames often leave breathing room around focal points, though graphic overlays and text elements occupy portions of composition",
+    "- **Colour palette**: Highly saturated, bold primaries and neons (hot pink, lime green, electric blue, vibrant yellow) dominate; warm tones (gold, orange) used for contrast and energy\n- **Saturation level**: Consistently oversaturated across the board—colours are pushed beyond natural, creating visual punch and stopping thumb-scrollers\n- **Lighting and contrast**: High contrast is standard, with bright highlights against dark shadows; strong directional light or dramatic spotlighting on subjects; minimal mid-tone greyness\n- **Background treatment**: Mix of flat solid colours, blurred/bokeh elements, and layered depth; textured overlays and graphic elements common; backgrounds intentionally simplified to avoid visual clutter competing with foreground\n- **Overall mood**: High energy, playful, sometimes chaotic; sense of excitement and urgency; theatrical rather than naturalistic\n- **Visual emptiness**: Moderate-to-high use of negative space; frames deliberately left partially open to prevent overwhelming viewers while maintaining compositional balance",
+    "- **Highly saturated, bold colour palettes** dominated by primary colours (red, blue, yellow) and neon/electric tones; minimal use of neutral or muted colours\n\n- **High contrast lighting** with bright highlights and deep shadows; strong separation between subject and background; deliberate use of glow/bloom effects and light rays\n\n- **Layered depth treatment** combining solid colour blocks, gradients, particle effects, and blurred/textured elements; backgrounds often feature multiple visual planes rather than single flat surfaces\n\n- **High-energy, intense mood** conveyed through dynamic colour combinations and visual density; sense of urgency and excitement throughout the batch\n\n- **Minimal empty space**—frames are visually packed with overlapping elements, effects, and visual interest; composition favours density over breathing room"
+  ],
+  "byConcept": {
+    "face-surprise": "Push saturation on primaries and neons; increase contrast between facial highlights and dark background for maximum visual pop.",
+    "jp-telop": "Boost colour saturation on bold primaries and electric tones; strengthen contrast between bright highlights and deep shadows for stopping power.",
+    "action": "Maximize saturation on neon and primary colours; use high-contrast lighting with dramatic shadows and bright highlights to convey urgency and energy.",
+    "object-spotlight": "Push saturation and contrast; use strong directional lighting to separate the object from a simplified, darker background with minimal mid-tones.",
+    "risk-warning": "Oversaturate primary and neon colours; push contrast to maximum with bright highlights against deep shadows to convey urgency and danger.",
+    "night-cinematic": "Strengthen contrast between bright highlights and shadows; add glow or bloom effects to neon accents against dark, textured backgrounds.",
+    "anime-style": "Boost colour saturation toward electric neons and bold primaries; increase contrast with strong highlights and deep shadows for visual intensity.",
+    "game-live": "Maximize saturation on vibrant primaries and neons; use high-contrast lighting with dramatic shadows and particle effects for high-energy visual density."
+  }
 }
